@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GridGuard — Grid Operations Control Room</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="bg-grid" aria-hidden="true"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 1.8 3.5 5.6v6.1c0 5.1 3.6 8.9 8.5 10.5 4.9-1.6 8.5-5.4 8.5-10.5V5.6L12 1.8z" fill="none" stroke="#34d399" stroke-width="1.8"/><path d="M13.2 5.5 7.8 13.2h3.4l-1 5.3 5.6-7.9h-3.4l.8-5.1z" fill="#34d399"/></svg>
+    </span>
+    <span class="brand-text">
+      <strong>GridGuard</strong>
+      <small>Smarter Grids. Safer Tomorrow.</small>
+    </span>
+  </div>
+  <nav class="tabs" role="tablist">
+    <button class="tab active" data-view="overview" role="tab">⌂ Overview</button>
+    <button class="tab" data-view="assets" role="tab">▤ Assets</button>
+    <button class="tab" data-view="maintenance" role="tab">⚒ Maintenance</button>
+    <button class="tab" data-view="ai" role="tab">✦ AI Assistant</button>
+  </nav>
+  <div class="topbar-right">
+    <span id="provider-badge" class="provider-badge" title="AI briefing provider">AI: …</span>
+    <span id="live-clock" class="clock">--:--:--</span>
+    <span class="operator"><span class="avatar">◉</span><span>Control Room<br><small>Grid Operator</small></span></span>
+  </div>
+</header>
+
+<main>
+  <!-- ============ OVERVIEW ============ -->
+  <section id="view-overview" class="view active">
+    <div class="page-head">
+      <div>
+        <h1>Grid Overview</h1>
+        <p class="sub">Real-time status of transformers and substations across the network · scores from the live risk engine</p>
+      </div>
+      <div class="head-filters">
+        <label class="search"><span>⌕</span><input id="q" type="search" placeholder="Search assets…"></label>
+        <select id="f-status"><option value="">All Statuses</option><option>Healthy</option><option>Monitoring</option><option>High</option><option>Critical</option></select>
+        <select id="f-region"><option value="">All Regions</option></select>
+        <select id="f-type"><option value="">All Types</option></select>
+      </div>
+    </div>
+
+    <div id="kpis" class="kpis"></div>
+
+    <div class="overview-grid">
+      <div class="map-panel panel">
+        <div class="map-legend">
+          <span><i class="dot healthy"></i>Healthy <small>Normal operation</small></span>
+          <span><i class="dot monitoring"></i>Monitoring <small>Potential issues</small></span>
+          <span><i class="dot high"></i>High <small>Schedule inspection</small></span>
+          <span><i class="dot critical"></i>Critical <small>Immediate attention</small></span>
+        </div>
+        <div id="netmap" class="netmap">
+          <svg id="netlines" class="netlines" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <span class="zone z-north">NORTH ZONE</span>
+          <span class="zone z-central">CENTRAL</span>
+          <span class="zone z-west">WEST ZONE</span>
+          <span class="zone z-east">EAST ZONE</span>
+          <span class="zone z-south">SOUTH ZONE</span>
+          <div id="nodes"></div>
+        </div>
+      </div>
+
+      <aside class="side-panel panel" id="side-panel"></aside>
+    </div>
+
+    <div class="queue-strip panel">
+      <div class="queue-head">
+        <h2>Attention Queue <small>ranked by risk × grid impact · live engine scores</small></h2>
+      </div>
+      <div id="queue" class="queue"></div>
+    </div>
+
+    <div class="bottom-strip">
+      <div class="panel strip-card" id="weather-card"></div>
+      <div class="panel strip-card" id="insights-card"></div>
+      <div class="panel strip-card">
+        <h3>Quick Actions</h3>
+        <div class="quick-actions">
+          <button class="btn ghost" id="qa-plan">▦ Generate Maintenance Plan</button>
+          <button class="btn ghost" id="qa-crew">⛑ Plan Crew Deployment</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ASSETS ============ -->
+  <section id="view-assets" class="view">
+    <div class="page-head">
+      <div>
+        <h1>Assets</h1>
+        <p class="sub">Every transformer and substation, with live risk scores and consequence of failure</p>
+      </div>
+    </div>
+    <div class="panel table-wrap">
+      <table class="assets-table">
+        <thead><tr>
+          <th>Asset</th><th>Substation</th><th>Region</th><th>Status</th>
+          <th>Risk</th><th>Dominant factor</th><th>Customers</th><th>Action</th><th></th>
+        </tr></thead>
+        <tbody id="assets-tbody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ============ MAINTENANCE ============ -->
+  <section id="view-maintenance" class="view">
+    <div class="page-head">
+      <div>
+        <h1>Maintenance Plan</h1>
+        <p class="sub" id="plan-meta">Ranked by risk × grid impact · generated from live engine scores</p>
+      </div>
+      <button class="btn primary" id="regen-plan">↻ Regenerate Plan</button>
+    </div>
+    <div class="panel table-wrap">
+      <table class="assets-table">
+        <thead><tr>
+          <th>#</th><th>Asset</th><th>Status</th><th>Risk</th><th>Customers</th><th>Redundancy</th><th>Recommended action</th><th></th>
+        </tr></thead>
+        <tbody id="plan-tbody"></tbody>
+      </table>
+    </div>
+    <h2 class="section-title">Crew Pre-positioning <small>weather-exposed, high-consequence assets</small></h2>
+    <div id="crew-list" class="crew-list"></div>
+  </section>
+
+  <!-- ============ AI ============ -->
+  <section id="view-ai" class="view">
+    <div class="page-head">
+      <div>
+        <h1>AI Operator Assistant</h1>
+        <p class="sub">Grounded in live risk-engine scores — explains results, never invents them</p>
+      </div>
+      <label class="ai-asset">Asset context
+        <select id="ai-asset"><option value="">Fleet-wide</option></select>
+      </label>
+    </div>
+    <div class="ai-grid">
+      <div class="panel chat-panel">
+        <div id="chat" class="chat"></div>
+        <div class="suggestions" id="suggestions"></div>
+        <form id="chat-form" class="chat-form">
+          <input id="chat-input" type="text" placeholder="Ask about any asset, e.g. Why is TX-007 critical?" autocomplete="off">
+          <button class="btn primary" type="submit">Ask ➤</button>
+        </form>
+      </div>
+      <aside class="panel ai-context" id="ai-context"></aside>
+    </div>
+  </section>
+</main>
+
+<!-- ============ ASSET MODAL ============ -->
+<div id="modal-backdrop" class="modal-backdrop hidden">
+  <div class="modal panel" role="dialog" aria-modal="true">
+    <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<div id="toasts" class="toasts"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

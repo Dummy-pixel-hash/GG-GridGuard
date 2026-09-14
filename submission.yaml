@@ -9,51 +9,83 @@
 # =============================================================================
 
 team:
-  name: ""                             # REQUIRED — e.g., "Orion Squad"
-  track: ""                            # REQUIRED — one of: AI | DevOps | Sustainability | Open
+  name: ""                             # REQUIRED — fill in team name before submission
+  track: "AI"                          # REQUIRED — one of: AI | DevOps | Sustainability | Open
   lead:
-    name: ""                           # REQUIRED — e.g., "Alice Chen"
-    email: ""                          # REQUIRED — e.g., "alice.chen@ibm.com"
+    name: ""                           # REQUIRED — fill in team lead name before submission
+    email: ""                          # REQUIRED — fill in team lead email before submission
   members:
-    - name: ""                         # REQUIRED — Team member 1
+    - name: ""                         # REQUIRED — fill in member names and emails before submission
       email: ""
-    - name: ""                         # Add more members by copying the two lines above
+    - name: ""
       email: ""
     - name: ""
       email: ""
 
 submission:
-  title: ""                            # REQUIRED — Project display name, e.g., "SmartOps Dashboard"
+  title: "GridGuard — Grid Asset Intelligence & Maintenance Prioritization"
 
   problem_statement: >                 # REQUIRED — 1-3 sentences. What problem? Who has it?
-    Replace this text with a concise description of the real-world problem
-    your project addresses and who experiences it.
+    Transformer and substation failures cause blackouts costing utilities over
+    $1M per hour and affecting millions of people, yet most utilities still
+    schedule maintenance by calendar rather than condition. Sensors already
+    measuring temperature, vibration, partial discharge, and oil quality show
+    failure signatures weeks in advance, and weather events compound the
+    risk — but sensor data, weather forecasts, and incident history are never
+    combined in time to act.
 
   solution_summary: >                  # REQUIRED — 1-3 sentences. What did you build?
-    Replace this text with a clear description of your solution
-    and how it addresses the problem above.
+    GridGuard is a standalone grid asset intelligence and maintenance-prioritization
+    system that fuses asset sensor telemetry, Open-Meteo weather forecasts,
+    historical incident records, and each asset's degradation and lifecycle state
+    into a deterministic 0–100 risk score per asset. Assets are then ranked by
+    combined risk and grid impact (customers served, critical facilities, load,
+    downstream cascade, redundancy) to produce a prioritized maintenance plan and
+    crew pre-positioning recommendations, with a conversational AI assistant that
+    explains risk factors and recommended actions — all grounded in the engine's
+    computed scores, never invented by the LLM.
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
-    - ""                               # e.g., "Real-time pipeline anomaly detection using watsonx.ai"
-    - ""
-    - ""
-    - ""                               # optional 4th
-    - ""                               # optional 5th
+    - "Deterministic risk engine: per-asset 0–100 composite score from five independently auditable components — sensor health (30%), weather risk (20%), historical failure (15%), asset degradation (15%), grid impact (20%) — with Normal/Watch/High/Critical bands"
+    - "Grid-impact-aware maintenance prioritization: assets ranked by risk and grid impact (customers, critical facilities, peak load, downstream cascade, N-1 redundancy) into a maintenance plan with crew pre-positioning recommendations for storm-exposed, high-consequence assets"
+    - "Asset lifecycle management with preserved lineage: replacement retires the old asset with its full fault and maintenance history intact, spawns a clean-state successor linked by predecessor_asset_id"
+    - "Conversational AI operator assistant: grounded in engine outputs, maintains conversation history across turns, adapts response length and tone (follow-ups get follow-up answers; casual reactions get natural replies), works offline via mock provider, configurable to any OpenAI-compatible endpoint"
+    - "Provider-agnostic LLM layer: three environment variables (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL) point GridGuard at any OpenAI-compatible endpoint — Ollama, llama.cpp, OpenAI, Groq, Together AI, or IBM watsonx.ai (optional)"
 
   tech_stack:
-    languages: []                      # REQUIRED — e.g., ["Python", "TypeScript"]
-    frameworks: []                     # e.g., ["FastAPI", "React"]
-    ibm_technologies: []               # e.g., ["watsonx.ai", "IBM Bob", "IBM Cloud Functions"]
-    databases: []                      # e.g., ["PostgreSQL", "Redis"]
-    other: []                          # e.g., ["Docker", "GitHub Actions", "Slack API"]
+    languages:
+      - "Python 3.10+"
+    frameworks:
+      - "stdlib only (no third-party runtime dependencies)"
+    ibm_technologies:
+      - "IBM Bob (hackathon development interface — optional at runtime)"
+      - "IBM watsonx.ai (optional LLM provider — GRIDGUARD_LLM_PROVIDER=watsonx)"
+    databases:
+      - "SQLite (stdlib sqlite3)"
+    other:
+      - "Open-Meteo API (weather forecasts — no API key required)"
+      - "openai Python SDK (optional — only needed for OpenAIProvider)"
 
   what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
-    Replace with what aspect of the submission you consider strongest
-    and want judges to pay special attention to.
+    GridGuard does not treat failure prediction as a black box. Four data silos
+    utilities already own — sensor telemetry, weather forecasts, incident history,
+    and asset lifecycle state — are fused into one explainable ranking that tells
+    an operator not just which asset is most likely to fail, but which failure would
+    hurt the grid most, why, and what to do about it this week. The AI assistant
+    explains the deterministic engine's output in plain language and maintains
+    conversational context across follow-up questions — grounded in the computed
+    scores, not free-form generation. The entire system runs on the Python standard
+    library with no pip install, making it immediately reproducible by any evaluator.
 
   known_limitations: >                 # Optional but recommended — be honest about gaps
-    Replace with any known limitations, incomplete features,
-    or shortcuts taken due to time constraints.
+    Risk weights (sensor 30%, weather 20%, historical failure 15%, degradation 15%,
+    grid impact 20%) are tunable design parameters, not validated against real
+    utility failure data — no labeled failure corpus was available. The demo runs on
+    8 synthetic assets; no real utility asset data or customer PII is included.
+    The prioritization ranking combines risk and grid impact by sort order; a more
+    sophisticated joint-scoring formula is a natural next step. IBM Bob MCP tool
+    integration is planned but not yet implemented — GridGuard runs as a standalone
+    application without it. Dashboard UI is functional but not production-polished.
 
 # =============================================================================
 # ARTIFACT LOCATIONS

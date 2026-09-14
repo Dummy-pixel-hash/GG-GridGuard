@@ -1,0 +1,160 @@
+"""GridGuard UI server — stdlib-only HTTP API + static frontend.
+
+No new dependencies: everything here uses the Python standard library plus
+the existing GridGuard packages (``data``, ``normalisation``,
+``risk_engine``, ``storage``, ``lifecycle``, ``ai_briefing``).
+
+Endpoints
+---------
+GET  /api/summary            grid counts, averages, exposure totals
+GET  /api/assets             enriched list for every asset (live engine scores)
+GET  /api/assets/<asset_id>  full detail for one asset
+GET  /api/priorities         ranked maintenance plan + crew pre-positioning
+GET  /api/briefing_info      active AI provider / model (mock when offline)
+POST /api/briefing           {"question": str, "asset_id": str|None,
+                              "history": [{"role":"user"|"assistant","content":str}]}
+                             -> grounded conversational answer
+GET  /                       the control-room dashboard (static files in ../frontend)
+
+Run with:  python3 run_ui.py   (from the repository root)
+"""
+
+from __future__ import annotations
+
+import json
+import mimetypes
+import os
+import sys
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_SRC = os.path.dirname(_HERE)
+if _SRC not in sys.path:
+    sys.path.insert(0, _SRC)
+
+from api.grid_service import GridState, default_db_path  # noqa: E402
+
+FRONTEND_DIR = os.path.join(_SRC, "frontend")
+
+STATE: GridState | None = None
+
+
+# ---------------------------------------------------------------------------
+# Handler
+# ---------------------------------------------------------------------------
+
+class Handler(BaseHTTPRequestHandler):
+    server_version = "GridGuardUI/1.0"
+
+    # -- helpers ----------------------------------------------------------
+
+    def _send_json(self, payload, status: int = 200) -> None:
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _send_static(self, rel_path: str) -> None:
+        fs_path = os.path.normpath(os.path.join(FRONTEND_DIR, rel_path))
+        if not fs_path.startswith(FRONTEND_DIR) or not os.path.isfile(fs_path):
+            self._send_json({"error": "not found"}, 404)
+            return
+        mime, _ = mimetypes.guess_type(fs_path)
+        with open(fs_path, "rb") as fh:
+            body = fh.read()
+        self.send_response(200)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    # -- routing ------------------------------------------------------------
+
+    def do_GET(self) -> None:  # noqa: N802
+        assert STATE is not None
+        path = urlparse(self.path).path
+
+        if path in ("/", "/index.html"):
+            self._send_static("index.html")
+        elif path in ("/styles.css", "/app.js"):
+            self._send_static(path.lstrip("/"))
+        elif path == "/api/summary":
+            self._send_json(STATE.summary())
+        elif path == "/api/assets":
+            self._send_json({"assets": STATE.assets})
+        elif path.startswith("/api/assets/"):
+            asset_id = path[len("/api/assets/"):]
+            asset = STATE.get_asset(asset_id)
+            if asset is None:
+                self._send_json({"error": f"unknown asset '{asset_id}'"}, 404)
+            else:
+                self._send_json(asset)
+        elif path == "/api/priorities":
+            self._send_json(STATE.priorities())
+        elif path == "/api/briefing_info":
+            self._send_json(STATE.briefing_info())
+        else:
+            self._send_json({"error": "not found"}, 404)
+
+    def do_POST(self) -> None:  # noqa: N802
+        assert STATE is not None
+        path = urlparse(self.path).path
+        if path != "/api/briefing":
+            self._send_json({"error": "not found"}, 404)
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+        try:
+            payload = json.loads(raw.decode("utf-8") or "{}")
+        except (ValueError, UnicodeDecodeError):
+            self._send_json({"error": "request body must be JSON"}, 400)
+            return
+        question = str(payload.get("question", "") or "")
+        asset_id = payload.get("asset_id") or None
+        history = payload.get("history") or []
+        if not isinstance(history, list):
+            history = []
+        if not question.strip():
+            self._send_json({"error": "question must be a non-empty string"}, 400)
+            return
+        self._send_json(STATE.answer_question(question, asset_id, history))
+
+    def log_message(self, fmt, *args) -> None:  # noqa: N802
+        sys.stderr.write("gridguard: " + fmt % args + "\n")
+
+
+def run(port: int, db_path: str) -> None:
+    global STATE
+    STATE = GridState(db_path=db_path)
+    total = len(STATE.assets)
+    info = STATE.briefing_info()
+    print(f"GridGuard UI: scored {total} assets from the live risk engine.", flush=True)
+    print(f"GridGuard UI: database at {db_path}", flush=True)
+    if STATE.env_files:
+        print(f"GridGuard UI: loaded env from {', '.join(STATE.env_files)}", flush=True)
+    else:
+        print("GridGuard UI: no .env file found (src/.env or ./.env); using environment only", flush=True)
+    print(f"GridGuard UI: AI provider '{info['provider']}' (model {info['model']})", flush=True)
+    if info.get("warning"):
+        print(f"GridGuard UI: WARNING — {info['warning']}", flush=True)
+    print(f"GridGuard UI: serving on http://localhost:{port}", flush=True)
+    server = ThreadingHTTPServer(("0.0.0.0", port), Handler)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nGridGuard UI: shutting down.")
+
+
+if __name__ == "__main__":
+    _port = int(os.getenv("APP_PORT", "8000"))
+    _db = default_db_path()
+    if len(sys.argv) > 1:
+        _port = int(sys.argv[1])
+    run(_port, _db)

@@ -86,6 +86,9 @@ demo/*.mkv
 data/
 logs/
 *.log
+*.db
+*.sqlite
+*.sqlite3
 
 # ── Jupyter Notebooks (optional: remove if you want to commit notebooks) ──────
 # .ipynb_checkpoints/
