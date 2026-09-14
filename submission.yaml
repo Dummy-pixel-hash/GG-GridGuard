@@ -12,11 +12,11 @@ team:
   name: ""                             # REQUIRED — fill in team name before submission
   track: "AI"                          # REQUIRED — one of: AI | DevOps | Sustainability | Open
   lead:
-    name: ""                           # REQUIRED — fill in team lead name before submission
-    email: ""                          # REQUIRED — fill in team lead email before submission
+    name: "Darshil Patel"                           # REQUIRED — fill in team lead name before submission
+    email: "26DCE068@charusat.edu.in"                          # REQUIRED — fill in team lead email before submission
   members:
-    - name: ""                         # REQUIRED — fill in member names and emails before submission
-      email: ""
+    - name: "Rishabh JigneshKumar Patel"                         # REQUIRED — fill in member names and emails before submission
+      email: "26dce082@charusat.edu.in"
     - name: ""
       email: ""
     - name: ""
