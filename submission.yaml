@@ -1,0 +1,69 @@
+# =============================================================================
+# HACKATHON SUBMISSION METADATA
+# =============================================================================
+# Instructions:
+#   - Fill in ALL required fields (marked with # REQUIRED)
+#   - Optional fields can be left as empty strings ""
+#   - Do NOT rename this file — the evaluation pipeline reads it by name
+#   - Use double quotes around all string values
+# =============================================================================
+
+team:
+  name: ""                             # REQUIRED — e.g., "Orion Squad"
+  track: ""                            # REQUIRED — one of: AI | DevOps | Sustainability | Open
+  lead:
+    name: ""                           # REQUIRED — e.g., "Alice Chen"
+    email: ""                          # REQUIRED — e.g., "alice.chen@ibm.com"
+  members:
+    - name: ""                         # REQUIRED — Team member 1
+      email: ""
+    - name: ""                         # Add more members by copying the two lines above
+      email: ""
+    - name: ""
+      email: ""
+
+submission:
+  title: ""                            # REQUIRED — Project display name, e.g., "SmartOps Dashboard"
+
+  problem_statement: >                 # REQUIRED — 1-3 sentences. What problem? Who has it?
+    Replace this text with a concise description of the real-world problem
+    your project addresses and who experiences it.
+
+  solution_summary: >                  # REQUIRED — 1-3 sentences. What did you build?
+    Replace this text with a clear description of your solution
+    and how it addresses the problem above.
+
+  key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
+    - ""                               # e.g., "Real-time pipeline anomaly detection using watsonx.ai"
+    - ""
+    - ""
+    - ""                               # optional 4th
+    - ""                               # optional 5th
+
+  tech_stack:
+    languages: []                      # REQUIRED — e.g., ["Python", "TypeScript"]
+    frameworks: []                     # e.g., ["FastAPI", "React"]
+    ibm_technologies: []               # e.g., ["watsonx.ai", "IBM Bob", "IBM Cloud Functions"]
+    databases: []                      # e.g., ["PostgreSQL", "Redis"]
+    other: []                          # e.g., ["Docker", "GitHub Actions", "Slack API"]
+
+  what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
+    Replace with what aspect of the submission you consider strongest
+    and want judges to pay special attention to.
+
+  known_limitations: >                 # Optional but recommended — be honest about gaps
+    Replace with any known limitations, incomplete features,
+    or shortcuts taken due to time constraints.
+
+# =============================================================================
+# ARTIFACT LOCATIONS
+# These paths are relative to the repo root. Only change if you moved files.
+# =============================================================================
+artifacts:
+  source_code: "src/"
+  setup_guide: "docs/setup-guide.md"
+  architecture_doc: "docs/architecture.md"
+  demo_video: "demo/demo-video-link.txt"   # URL to hosted video (YouTube, Loom, Box)
+  live_demo: "demo/live-demo-url.txt"      # URL to deployed demo (optional)
+  screenshots: "demo/screenshots/"
+  presentation: "presentation/"

@@ -1,0 +1,11 @@
+https://your-live-demo-url-here.com
+
+Replace the URL above with a link to your live/deployed demo.
+
+If your project is not deployed, delete this line and write:
+  NOT DEPLOYED — run locally using docs/setup-guide.md
+
+Accepted options:
+  - A public URL (Vercel, Render, IBM Cloud, Railway, etc.)
+  - A localhost URL with note that it requires local setup
+  - "NOT DEPLOYED" — judges will run it locally using your setup guide

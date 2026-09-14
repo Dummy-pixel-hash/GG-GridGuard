@@ -1,0 +1,139 @@
+name: ✅ Validate Submission
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  validate:
+    name: Submission Completeness Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install yq (YAML parser)
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      # ── 1. Required files exist ────────────────────────────────────────────
+      - name: Check required files exist
+        run: |
+          MISSING=()
+          REQUIRED_FILES=(
+            "README.md"
+            "submission.yaml"
+            "docs/problem-statement.md"
+            "docs/solution-overview.md"
+            "docs/architecture.md"
+            "docs/setup-guide.md"
+            "demo/demo-video-link.txt"
+          )
+          for f in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$f" ]; then
+              MISSING+=("❌ Missing: $f")
+            fi
+          done
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo "Submission validation FAILED — missing required files:"
+            printf '%s\n' "${MISSING[@]}"
+            exit 1
+          fi
+          echo "✅ All required files present."
+
+      # ── 2. submission.yaml is valid YAML ──────────────────────────────────
+      - name: Validate submission.yaml is parseable
+        run: |
+          yq '.' submission.yaml > /dev/null
+          echo "✅ submission.yaml is valid YAML."
+
+      # ── 3. Required fields are filled in ──────────────────────────────────
+      - name: Check required fields in submission.yaml
+        run: |
+          ERRORS=()
+
+          check_field() {
+            local path="$1"
+            local label="$2"
+            local val
+            val=$(yq "$path" submission.yaml 2>/dev/null)
+            if [ -z "$val" ] || [ "$val" = "null" ] || [ "$val" = '""' ] || [ "$val" = "" ]; then
+              ERRORS+=("❌ Required field missing or empty: $label ($path)")
+            fi
+          }
+
+          check_field '.team.name'              'team.name'
+          check_field '.team.track'             'team.track'
+          check_field '.team.lead.name'         'team.lead.name'
+          check_field '.team.lead.email'        'team.lead.email'
+          check_field '.submission.title'       'submission.title'
+          check_field '.submission.problem_statement' 'submission.problem_statement'
+          check_field '.submission.solution_summary'  'submission.solution_summary'
+
+          # Check track is a valid value
+          TRACK=$(yq '.team.track' submission.yaml)
+          if [[ ! "$TRACK" =~ ^(AI|DevOps|Sustainability|Open)$ ]]; then
+            ERRORS+=("❌ team.track must be one of: AI | DevOps | Sustainability | Open (got: $TRACK)")
+          fi
+
+          # Check at least one key feature
+          FEATURES=$(yq '.submission.key_features | length' submission.yaml)
+          if [ "$FEATURES" -lt 1 ]; then
+            ERRORS+=("❌ submission.key_features must have at least 1 entry")
+          fi
+
+          if [ ${#ERRORS[@]} -gt 0 ]; then
+            echo "Submission validation FAILED — incomplete fields in submission.yaml:"
+            printf '%s\n' "${ERRORS[@]}"
+            exit 1
+          fi
+          echo "✅ All required submission.yaml fields are filled."
+
+      # ── 4. src/ has actual code (not just README) ─────────────────────────
+      - name: Check src/ is not empty
+        run: |
+          CODE_FILES=$(find src/ -type f ! -name "README.md" ! -name ".env.example" | wc -l)
+          if [ "$CODE_FILES" -lt 1 ]; then
+            echo "❌ src/ contains no source code files. Add your project code to src/."
+            exit 1
+          fi
+          echo "✅ src/ contains $CODE_FILES source file(s)."
+
+      # ── 5. Demo video link is not the placeholder ──────────────────────────
+      - name: Check demo video link is updated
+        run: |
+          VIDEO_LINK=$(head -1 demo/demo-video-link.txt)
+          if [[ "$VIDEO_LINK" == *"your-demo-video-link-here"* ]]; then
+            echo "❌ demo/demo-video-link.txt still contains the placeholder URL. Update it with your real video link."
+            exit 1
+          fi
+          echo "✅ Demo video link looks real: $VIDEO_LINK"
+
+      # ── 6. README placeholders are replaced ───────────────────────────────
+      - name: Check README placeholders are replaced
+        run: |
+          if grep -q "\[Your Project Title Here\]" README.md; then
+            echo "❌ README.md still contains placeholder text. Update it with your project details."
+            exit 1
+          fi
+          if grep -q "\[Your Team Name\]" README.md; then
+            echo "❌ README.md still contains '[Your Team Name]' placeholder."
+            exit 1
+          fi
+          echo "✅ README.md placeholders appear to be replaced."
+
+      # ── Summary ───────────────────────────────────────────────────────────
+      - name: Validation passed
+        run: |
+          echo ""
+          echo "🎉 Submission validation passed!"
+          echo "Your repository meets all structural requirements."
+          echo ""
+          echo "Team:  $(yq '.team.name' submission.yaml)"
+          echo "Title: $(yq '.submission.title' submission.yaml)"
+          echo "Track: $(yq '.team.track' submission.yaml)"
