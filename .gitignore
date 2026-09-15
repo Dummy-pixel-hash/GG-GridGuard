@@ -83,8 +83,8 @@ demo/*.avi
 demo/*.mkv
 
 # ── Docker volumes / local data ───────────────────────────────────────────────
-data/
-logs/
+/data/
+/logs/
 *.log
 *.db
 *.db-shm
