@@ -9,7 +9,7 @@
 # =============================================================================
 
 team:
-  name: ""                             # REQUIRED — fill in team name before submission
+  name: "GG"                             # REQUIRED — fill in team name before submission
   track: "AI"                          # REQUIRED — one of: AI | DevOps | Sustainability | Open
   lead:
     name: "Darshil Patel"                           # REQUIRED — fill in team lead name before submission
