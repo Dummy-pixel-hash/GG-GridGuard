@@ -3,7 +3,7 @@
 > **Grid asset intelligence and maintenance prioritization.**  
 > Fuse sensor telemetry, weather forecasts, failure history, and lifecycle state into one explainable risk score per asset — then act on it before the failure happens.
 
-[![Tests](https://img.shields.io/badge/tests-546%20passing-brightgreen)](#-running-tests)
+[![Tests](https://img.shields.io/badge/tests-566%20passing-brightgreen)](#-running-tests)
 [![Python](https://img.shields.io/badge/python-3.10%2B-blue)](#-prerequisites)
 [![No dependencies](https://img.shields.io/badge/runtime_deps-stdlib_only-lightgrey)](#-installation)
 
@@ -34,16 +34,16 @@ GridGuard is a **standalone grid asset intelligence and maintenance-prioritizati
 
 | Layer | What it does | Status |
 |---|---|---|
-| **Risk engine** | Composite 0–100 score per asset: sensor health (30%), weather (20%), historical failure (15%), degradation (15%), grid impact (20%). Normal / Watch / High / Critical bands. | ✅ Implemented — 61 tests |
-| **Normalisation** | Converts physical-unit sensor readings (°C, pC, kV, mm/s, km/h) to 0–100 scores using IEC-standard alarm thresholds. | ✅ Implemented — 110 tests |
+| **Risk engine** | Composite 0–100 score per asset: sensor health (30%), weather (20%), historical failure (15%), degradation (15%), grid impact (20%). Normal / Watch / High / Critical bands. | ✅ Implemented — 69 tests |
+| **Normalisation** | Converts physical-unit sensor readings (°C, pC, kV, mm/s, km/h) to 0–100 scores using IEC-standard alarm thresholds. | ✅ Implemented — 117 tests |
 | **Lifecycle engine** | Pure-function state machine: ACTIVE → FAULTED → RETIRED. Replacement retires the old unit with its full history intact and creates a clean-state successor with a lineage link. | ✅ Implemented — 94 tests |
 | **Storage** | SQLite asset registry, lifecycle records, risk snapshots, retired-asset lineage. Seeded with 8 synthetic demo assets. | ✅ Implemented — 67 tests |
-| **Weather integration** | Fetches Open-Meteo forecasts (temperature stress, precipitation, wind/storm severity) per asset location. No API key required. | ✅ Implemented — 61 tests |
+| **Weather integration** | Staged static storm scenario per asset location by default (deterministic demo); opt-in live Open-Meteo forecasts via `GRIDGUARD_LIVE_WEATHER=1`. No API key required. | ✅ Implemented — 61 tests |
 | **AI briefing layer** | Conversational operator assistant grounded in engine outputs. Supports follow-up questions, casual reactions, and tone-adaptive responses. Provider-agnostic: OpenAI-compatible endpoint, watsonx.ai (optional), or offline mock. | ✅ Implemented — 145 tests |
-| **Dashboard API** | Stdlib-only HTTP server. `/api/summary`, `/api/assets`, `/api/priorities`, `POST /api/briefing` with conversation history. | ✅ Implemented — 8 tests |
+| **Dashboard API** | Stdlib-only HTTP server. `/api/summary`, `/api/assets`, `/api/priorities`, `POST /api/briefing` with conversation history. | ✅ Implemented — 13 tests |
 | **Operator dashboard** | Browser control-room view: fleet summary, per-asset risk cards, ranked maintenance plan, crew pre-positioning, AI assistant chat. | ✅ Implemented |
 
-**546 tests passing. Zero network calls in the test suite.**
+**566 tests passing. Zero network calls in the test suite.**
 
 ---
 
@@ -109,18 +109,19 @@ The LLM **never calculates risk** — the deterministic engine runs first. The A
 
 ```
 User: What's wrong with TX-007?
-AI:   TX-007 is Critical at 94.9. The main driver is weather risk (100/100)
-      — there's a severe storm inbound and TX-007 has 3 prior weather-related
-      failures. Inspect today.
+AI:   TX-007 is Critical at 95.4. The main driver is sensor health (95.6/100)
+       — top-oil at 94 °C, PD at 2200 pC, oil dielectric failed at 18 kV —
+       on a 43-year-old unit past its rated life with 4 failures in 5 years.
+       Inspect today.
 
 User: Why is the weather such a big deal?
-AI:   Wind/storm score is 100 and precipitation is 85. TX-007 has had 3 of
-      its 4 failures in the last 5 years triggered by weather events, so it's
-      proven vulnerable. The storm compounds an already-degraded asset.
+AI:   Weather risk is 96.8 — wind/storm scores 100 with an 82 mm, 115 km/h
+       front inbound, and 3 of TX-007's 4 failures in the last 5 years were
+       weather-triggered. The storm compounds an already-degraded asset.
 
 User: oh shit
 AI:   Yeah — that combination is exactly the scenario you pre-position for.
-      Get a crew staged before the front arrives.
+       Get a crew staged before the front arrives.
 ```
 
 ---
@@ -179,17 +180,17 @@ Startup seeds the 8-asset demo dataset, scores every asset with the live risk en
 python3 -m pytest -q
 ```
 
-546 tests · 0 network calls · no credentials required.
+566 tests · 0 network calls · no credentials required.
 
 | Module | Tests | Covers |
 |---|---|---|
-| `test_risk_engine.py` | 61 | All five scoring functions, band boundaries, dominant factor, determinism |
-| `test_normalisation.py` | 110 | Physical-unit → 0–100 conversion, IEC thresholds, missing sensors, validation |
+| `test_risk_engine.py` | 69 | All five scoring functions, band boundaries, dominant factor, determinism |
+| `test_normalisation.py` | 117 | Physical-unit → 0–100 conversion, IEC thresholds, missing sensors, validation |
 | `test_lifecycle.py` | 94 | State machine transitions, fault stress, repair, replacement lineage |
 | `test_storage.py` | 67 | SQLite round-trips, lifecycle serialisation, risk result history, seeder idempotency |
 | `test_weather.py` | 61 | Open-Meteo parsing, storm classification, fallback handling |
 | `test_ai_briefing.py` | 145 | Context grounding, all prompt templates, conversation history, OpenAI provider (mocked HTTP), config auto-detection |
-| `test_api_service.py` | 8 | Full pipeline from demo asset to scored API response |
+| `test_api_service.py` | 13 | Full pipeline from demo asset to scored API response |
 
 ---
 

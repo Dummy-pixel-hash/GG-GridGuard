@@ -52,6 +52,7 @@ Provider auto-detection:
 |---|---|---|
 | `APP_PORT` | Dashboard port (default: `8000`) | No |
 | `GRIDGUARD_DB` | Path to SQLite database file (default: `gridguard.db` at repo root) | No |
+| `GRIDGUARD_LIVE_WEATHER` | Set to `1` to attempt a live Open-Meteo weather refresh at startup (default: unset — staged static demo weather, deterministic scores) | No |
 
 ## Installation
 
@@ -81,7 +82,7 @@ What startup does:
 
 1. Loads `.env` files (prints which files were found)
 2. Seeds the 8 synthetic demo assets into SQLite (`gridguard.db`, or `GRIDGUARD_DB` if set)
-3. Attempts a live Open-Meteo 72-hour weather refresh for every asset location (best-effort — static demo data kept per asset on network failure)
+3. Uses the staged static demo weather (deterministic scores and bands). Only when `GRIDGUARD_LIVE_WEATHER=1` is set does it attempt a live Open-Meteo 72-hour refresh per asset location (best-effort — static demo data kept per asset on network failure; scores may differ from the staged scenario)
 4. Normalises and scores every asset with the live risk engine
 5. Persists a risk snapshot per asset in the storage layer
 6. Prints the active LLM provider and model (or warns and falls back to mock)
@@ -92,6 +93,7 @@ Expected startup output:
 ```
 GridGuard UI: scored 8 assets from the live risk engine.
 GridGuard UI: database at /path/to/gridguard.db
+GridGuard UI: staged static demo weather (set GRIDGUARD_LIVE_WEATHER=1 for live refresh)
 GridGuard UI: loaded env from src/.env
 GridGuard UI: AI provider 'openai' (model llama3)
 GridGuard UI: serving on http://localhost:8000
@@ -188,6 +190,7 @@ Note: `ibm_watsonx_ai` SDK must be installed (`pip install ibm-watsonx-ai`) when
 | LLM provider `unavailable` warning | Server fell back to offline mock — briefings still work. Check `LLM_BASE_URL`, `LLM_API_KEY`, and that the endpoint is reachable. |
 | `401` from LLM endpoint | Check `LLM_API_KEY` in `.env` |
 | `Connection refused` for local model | Ensure Ollama / llama.cpp is running and `LLM_BASE_URL` matches its port |
-| Weather fetch fails | Open-Meteo needs no API key — a network error usually means a temporary outage or no internet access. Scores still work without live weather (demo uses synthetic weather data). |
+| Weather fetch fails | Open-Meteo needs no API key — a network error usually means a temporary outage or no internet access. Scores still work without live weather (the demo uses staged static weather data by default; live refresh is opt-in via `GRIDGUARD_LIVE_WEATHER=1`). |
 | Port already in use | Set `APP_PORT=8080` in `.env` or pass the port as an argument: `python3 run_ui.py 8080` |
 | `gridguard.db` not found | It is created automatically on first run in the repository root. Set `GRIDGUARD_DB` to control the path. |
+| Dashboard fonts look different offline | The UI loads Fira Sans / Fira Code from Google Fonts; without internet it falls back to system fonts. All data, scores, and briefings work fully offline. |

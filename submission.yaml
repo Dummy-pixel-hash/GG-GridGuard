@@ -47,8 +47,8 @@ submission:
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
     - "Hardened deterministic risk engine: per-asset 0–100 composite score from five auditable components — sensor health (30%), weather risk (20%), historical failure (15%), asset degradation (15%), grid impact (20%) — with Normal/Watch/High/Critical bands; includes MTBF sub-signal, current load scoring, corrected cold-stress threshold, and a raised missing-sensor safety floor (all-blind asset scores ≥40 on sensor component)"
-    - "Live weather integration: GridState refreshes each asset's Open-Meteo 72-hour forecast at startup (best-effort; static demo data kept on network failure); storm_warning_level derived from actual wind/precipitation via classify_storm_level"
-    - "Grid-impact-aware maintenance prioritization and crew pre-positioning: assets ranked by risk × grid impact (customers, critical facilities, peak load, downstream cascade, N-1 redundancy) into a day's work order list with region-level crew staging recommendations for storm-exposed, high-consequence assets"
+    - "Live weather integration: staged static storm scenario by default for a reproducible demo; opt-in live Open-Meteo 72-hour refresh per asset at startup via GRIDGUARD_LIVE_WEATHER=1 (best-effort; static demo data kept on network failure); storm_warning_level derived from actual wind/precipitation via classify_storm_level"
+    - "Grid-impact-aware maintenance prioritization and crew pre-positioning: assets ranked by overall risk with grid-impact tie-break (customers, critical facilities, peak load, downstream cascade, N-1 redundancy) into a day's work order list with region-level crew staging recommendations for storm-exposed, high-consequence assets"
     - "Asset lifecycle management with preserved lineage: replacement retires the old asset with full fault/maintenance history intact, spawns a clean-state successor linked by predecessor_asset_id; advance_age is stateless (overdue managed by maintenance events, not age ticks)"
     - "Conversational AI operator assistant: grounded in engine outputs, conversation history across turns, tone-adaptive responses, offline mock fallback, configurable to any OpenAI-compatible endpoint or IBM watsonx.ai"
 
@@ -75,8 +75,9 @@ submission:
     Every scoring formula is independently auditable: cold-stress uses a
     physically correct 0 °C neutral, MTBF drives the historical-failure score,
     missing sensors raise risk rather than hiding it, and current load is
-    reflected in the sensor component. Weather scores update from real Open-Meteo
-    forecasts at startup. The AI assistant explains the engine's output in plain
+    reflected in the sensor component. Weather scores use the staged static
+    storm scenario by default (opt-in live Open-Meteo refresh at startup).
+    The AI assistant explains the engine's output in plain
     language, maintains context across follow-ups, and falls back to a
     deterministic grounded response if the LLM is unavailable. The whole system
     runs on the Python standard library — no pip install, immediately reproducible.

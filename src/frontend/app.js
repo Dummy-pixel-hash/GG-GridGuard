@@ -1,6 +1,9 @@
 /* GridGuard control-room frontend — vanilla JS, no dependencies.
-   Every number rendered here arrives from the backend API, which in turn
-   serves live risk-engine outputs. Nothing is hardcoded. */
+   Every number rendered from the backend API arrives from the live risk
+   engine. buildMockData() below is only a fallback when the backend is
+   unreachable: it mirrors the backend response shape and replays the
+   staged static demo scenario's engine outputs (same scores the backend
+   serves by default). It is clearly labelled "Preview data" in the UI. */
 "use strict";
 
 const S = {
@@ -28,110 +31,166 @@ const fmtInt = (n) => n == null ? "—" : Number(n).toLocaleString("en-US");
 const riskClass = (v) => v >= 85 ? "bad" : v >= 70 ? "bad" : v >= 40 ? "warn" : "ok";
 const barColor = (v) => v >= 85 ? COLORS.Critical : v >= 70 ? COLORS.High : v >= 40 ? COLORS.Monitoring : COLORS.Healthy;
 
+/* Offline fallback: same response shape as GET /api/assets, replaying the
+   staged static demo scenario's engine outputs (2 Healthy / 2 Monitoring /
+   2 High / 2 Critical). Only used when the backend is unreachable — the
+   UI banners it as "Preview data". */
 function buildMockData() {
-  const raw = [
-    {
-      id: "TX-001", status: "Healthy", asset_type: "transformer", substation: "North Hub", region: "North",
-      overall_risk: 24, dominant_factor: "thermal_risk", recommended_action: "Routine inspection", action_detail: "Load profile remains stable and no thermal drift is present.",
-      sensors_raw: { top_oil_temp_c: 58, winding_hot_spot_c: 72, vibration_mm_s: 1.4, oil_dielectric_kv: 68, partial_discharge_pc: 190, load_factor_current: 0.62 },
-      sensors_norm: { temperature_score: 22, vibration_score: 30, oil_quality_score: 16, partial_discharge_score: 24 },
-      weather_raw: { max_temp_c: 31, min_temp_c: 18, precipitation_mm: 12, wind_speed_max_kmh: 28, storm_warning_level: 1, forecast_hours: 72 },
-      weather_norm: { temperature_stress_score: 18, precipitation_score: 12, wind_storm_score: 16 },
-      grid_impact: { customers_served: 42000, critical_facility_count: 1, critical_facility_names: ["North Medical Campus"], peak_load_mw: 118, downstream_asset_count: 7, has_redundant_path: true },
-      lifecycle: { rated_lifespan_years: 28, remaining_life_years: 18, state: "Stable", maintenance_history: [{ days_ago: 120, notes: "oil sample" }], fault_history: [] },
-      degradation: { age_years: 10, maintenance_overdue_days: 0, insulation_health_pct: 93, cumulative_fault_events: 0 },
+  const component_labels = { sensor_health: "Sensor health", weather_risk: "Weather risk", historical_failure: "Historical failure", asset_degradation: "Asset degradation", grid_impact: "Grid impact" };
+  const component_weights = { sensor_health: 0.30, weather_risk: 0.20, historical_failure: 0.15, asset_degradation: 0.15, grid_impact: 0.20 };
+  const ACTIONS = {
+    Healthy: ["Routine monitoring", "No action — next scheduled check"],
+    Monitoring: ["Plan inspection", "Routine — schedule within 30 days"],
+    High: ["Inspect this week", "Priority — schedule within 7 days"],
+    Critical: ["Inspect today", "Immediate — dispatch crew within 24h"],
+  };
+  const A = (o) => {
+    const [recommended_action, action_detail] = ACTIONS[o.status];
+    return {
+      ...o, component_labels, component_weights, recommended_action, action_detail,
+      risk_level: o.status === "Healthy" ? "Normal" : o.status === "Monitoring" ? "Watch" : o.status,
+      dominant_factor_label: component_labels[o.dominant_factor],
+      lineage: { predecessor: null, successor_of_retired: null },
+    };
+  };
+  const assets = [
+    A({
+      id: "TX-001", status: "Healthy", asset_type: "transformer", substation: "Riverside Main", region: "Central",
+      overall_risk: 3.9, dominant_factor: "weather_risk", commissioned_year: 2015, rated_kva: 40000, rated_voltage_kv: 66,
+      components: { sensor_health: 3.1, weather_risk: 9.8, historical_failure: 0, asset_degradation: 1.4, grid_impact: 4.2 },
+      sensors_raw: { top_oil_temp_c: 52, winding_hot_spot_c: 68, vibration_mm_s: 0.6, oil_dielectric_kv: 68, partial_discharge_pc: 80, load_factor_current: 0.42 },
+      sensors_norm: { temperature_score: 0, vibration_score: 0, oil_quality_score: 5, partial_discharge_score: 0, load_score: 42, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 18, min_temp_c: 10, precipitation_mm: 2, wind_speed_max_kmh: 25, storm_warning_level: 0, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 0, precipitation_score: 2, wind_storm_score: 20.83, forecast_hours: 72 },
+      grid_impact: { customers_served: 3200, critical_facility_count: 0, critical_facility_names: [], peak_load_mw: 3.5, downstream_asset_count: 2, has_redundant_path: true },
+      lifecycle: { state: "active", age_years: 10, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 30, insulation_health_pct: 96, cumulative_fault_events: 0, maintenance_overdue_days: 0, average_load_factor: 0.42, failure_count_last_5yr: 0, failures_caused_by_weather: 0, last_failure_days_ago: null, repeat_fault_active: false, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 10, maintenance_overdue_days: 0, insulation_health_pct: 96, cumulative_fault_events: 0 },
       history: { failure_count_last_5yr: 0, failures_caused_by_weather: 0, last_failure_days_ago: null, repeat_mode_flag: false, mean_time_between_failures_days: null },
-      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2014, rated_kva: 320000, rated_voltage_kv: 220,
-    },
-    {
-      id: "TX-003", status: "High", asset_type: "transformer", substation: "Central West", region: "Central",
-      overall_risk: 71, dominant_factor: "oil_risk", recommended_action: "Replace oil + filter", action_detail: "Oil dielectric is trending down and contaminant load is increasing.",
-      sensors_raw: { top_oil_temp_c: 74, winding_hot_spot_c: 95, vibration_mm_s: 2.9, oil_dielectric_kv: 34, partial_discharge_pc: 620, load_factor_current: 0.82 },
-      sensors_norm: { temperature_score: 58, vibration_score: 61, oil_quality_score: 78, partial_discharge_score: 62 },
-      weather_raw: { max_temp_c: 33, min_temp_c: 20, precipitation_mm: 26, wind_speed_max_kmh: 36, storm_warning_level: 2, forecast_hours: 72 },
-      weather_norm: { temperature_stress_score: 41, precipitation_score: 36, wind_storm_score: 27 },
-      grid_impact: { customers_served: 93000, critical_facility_count: 2, critical_facility_names: ["Central Data Center", "Emergency Services Hub"], peak_load_mw: 190, downstream_asset_count: 10, has_redundant_path: false },
-      lifecycle: { rated_lifespan_years: 30, remaining_life_years: 9, state: "Aging", maintenance_history: [{ days_ago: 80, notes: "oil reclaim" }], fault_history: [{ severity: "minor", days_ago: 145 }] },
-      degradation: { age_years: 21, maintenance_overdue_days: 42, insulation_health_pct: 78, cumulative_fault_events: 3 },
-      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 1, last_failure_days_ago: 180, repeat_mode_flag: true, mean_time_between_failures_days: 986 },
-      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2005, rated_kva: 400000, rated_voltage_kv: 230,
-    },
-    {
-      id: "TX-004", status: "Critical", asset_type: "substation", substation: "Central East", region: "Central",
-      overall_risk: 92, dominant_factor: "thermal_risk", recommended_action: "Emergency load shed and service", action_detail: "Critical hotspot is approaching protective limits with elevated downstream consequence.",
-      sensors_raw: { top_oil_temp_c: 88, winding_hot_spot_c: 116, vibration_mm_s: 3.8, oil_dielectric_kv: 29, partial_discharge_pc: 970, load_factor_current: 0.91 },
-      sensors_norm: { temperature_score: 88, vibration_score: 76, oil_quality_score: 84, partial_discharge_score: 89 },
-      weather_raw: { max_temp_c: 35, min_temp_c: 21, precipitation_mm: 39, wind_speed_max_kmh: 42, storm_warning_level: 2, forecast_hours: 72 },
-      weather_norm: { temperature_stress_score: 52, precipitation_score: 47, wind_storm_score: 39 },
-      grid_impact: { customers_served: 148000, critical_facility_count: 3, critical_facility_names: ["Metro Hospital", "Water Plant", "Airport Fuel Loop"], peak_load_mw: 270, downstream_asset_count: 14, has_redundant_path: false },
-      lifecycle: { rated_lifespan_years: 27, remaining_life_years: 6, state: "Critical", maintenance_history: [{ days_ago: 62, notes: "cooling check" }], fault_history: [{ severity: "major", days_ago: 57 }] },
-      degradation: { age_years: 24, maintenance_overdue_days: 67, insulation_health_pct: 70, cumulative_fault_events: 5 },
-      history: { failure_count_last_5yr: 3, failures_caused_by_weather: 1, last_failure_days_ago: 57, repeat_mode_flag: true, mean_time_between_failures_days: 610 },
-      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 1999, rated_kva: 500000, rated_voltage_kv: 275,
-    },
-    {
-      id: "TX-007", status: "High", asset_type: "substation", substation: "East Bay", region: "East",
-      overall_risk: 76, dominant_factor: "weather_risk", recommended_action: "Pre-stage response crew", action_detail: "Operational risk is driven by concurrent storm exposure and limited redundancy.",
-      sensors_raw: { top_oil_temp_c: 78, winding_hot_spot_c: 101, vibration_mm_s: 3.1, oil_dielectric_kv: 40, partial_discharge_pc: 710, load_factor_current: 0.86 },
-      sensors_norm: { temperature_score: 66, vibration_score: 68, oil_quality_score: 72, partial_discharge_score: 71 },
-      weather_raw: { max_temp_c: 34, min_temp_c: 21, precipitation_mm: 65, wind_speed_max_kmh: 60, storm_warning_level: 3, forecast_hours: 72 },
-      weather_norm: { temperature_stress_score: 46, precipitation_score: 69, wind_storm_score: 64 },
-      grid_impact: { customers_served: 121000, critical_facility_count: 2, critical_facility_names: ["East Port", "Coastal Hospital"], peak_load_mw: 238, downstream_asset_count: 13, has_redundant_path: false },
-      lifecycle: { rated_lifespan_years: 29, remaining_life_years: 8, state: "Stress", maintenance_history: [{ days_ago: 74, notes: "roofing seal" }], fault_history: [{ severity: "minor", days_ago: 210 }] },
-      degradation: { age_years: 20, maintenance_overdue_days: 54, insulation_health_pct: 77, cumulative_fault_events: 4 },
-      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 2, last_failure_days_ago: 210, repeat_mode_flag: true, mean_time_between_failures_days: 840 },
-      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2006, rated_kva: 470000, rated_voltage_kv: 275,
-    },
-    {
-      id: "TX-008", status: "Monitoring", asset_type: "transformer", substation: "Coastal North", region: "East",
-      overall_risk: 41, dominant_factor: "insulation_risk", recommended_action: "Insulation audit", action_detail: "Insulation health is stable but trending down under marine moisture exposure.",
-      sensors_raw: { top_oil_temp_c: 67, winding_hot_spot_c: 86, vibration_mm_s: 2.7, oil_dielectric_kv: 52, partial_discharge_pc: 430, load_factor_current: 0.75 },
-      sensors_norm: { temperature_score: 42, vibration_score: 56, oil_quality_score: 51, partial_discharge_score: 36 },
-      weather_raw: { max_temp_c: 33, min_temp_c: 22, precipitation_mm: 58, wind_speed_max_kmh: 55, storm_warning_level: 2, forecast_hours: 72 },
-      weather_norm: { temperature_stress_score: 44, precipitation_score: 66, wind_storm_score: 58 },
-      grid_impact: { customers_served: 81000, critical_facility_count: 1, critical_facility_names: ["Harbor Pump Station"], peak_load_mw: 174, downstream_asset_count: 11, has_redundant_path: true },
-      lifecycle: { rated_lifespan_years: 30, remaining_life_years: 14, state: "Watch", maintenance_history: [{ days_ago: 103, notes: "moisture check" }], fault_history: [] },
-      degradation: { age_years: 17, maintenance_overdue_days: 15, insulation_health_pct: 82, cumulative_fault_events: 1 },
-      history: { failure_count_last_5yr: 1, failures_caused_by_weather: 1, last_failure_days_ago: 420, repeat_mode_flag: false, mean_time_between_failures_days: 1825 },
-      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2008, rated_kva: 430000, rated_voltage_kv: 230,
-    },
+    }),
+    A({
+      id: "TX-002", status: "Healthy", asset_type: "transformer", substation: "Northgate", region: "North",
+      overall_risk: 8.8, dominant_factor: "sensor_health", commissioned_year: 2007, rated_kva: 25000, rated_voltage_kv: 33,
+      components: { sensor_health: 10, weather_risk: 12.2, historical_failure: 0, asset_degradation: 12.2, grid_impact: 7.4 },
+      sensors_raw: { top_oil_temp_c: 58, winding_hot_spot_c: 74, vibration_mm_s: 0.9, oil_dielectric_kv: 62, partial_discharge_pc: 150, load_factor_current: 0.38 },
+      sensors_norm: { temperature_score: 7, vibration_score: 0, oil_quality_score: 20, partial_discharge_score: 5.6, load_score: 38, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 22, min_temp_c: 12, precipitation_mm: 5, wind_speed_max_kmh: 30, storm_warning_level: 0, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 0, precipitation_score: 5, wind_storm_score: 25, forecast_hours: 72 },
+      grid_impact: { customers_served: 7500, critical_facility_count: 0, critical_facility_names: [], peak_load_mw: 6, downstream_asset_count: 3, has_redundant_path: true },
+      lifecycle: { state: "active", age_years: 18, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 22, insulation_health_pct: 88, cumulative_fault_events: 1, maintenance_overdue_days: 0, average_load_factor: 0.4, failure_count_last_5yr: 0, failures_caused_by_weather: 0, last_failure_days_ago: null, repeat_fault_active: false, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 18, maintenance_overdue_days: 0, insulation_health_pct: 88, cumulative_fault_events: 1 },
+      history: { failure_count_last_5yr: 0, failures_caused_by_weather: 0, last_failure_days_ago: null, repeat_mode_flag: false, mean_time_between_failures_days: null },
+    }),
+    A({
+      id: "TX-003", status: "Monitoring", asset_type: "transformer", substation: "Eastside Industrial", region: "East",
+      overall_risk: 47.9, dominant_factor: "sensor_health", commissioned_year: 1997, rated_kva: 60000, rated_voltage_kv: 110,
+      components: { sensor_health: 58.3, weather_risk: 74.7, historical_failure: 30, asset_degradation: 51, grid_impact: 16.4 },
+      sensors_raw: { top_oil_temp_c: 80, winding_hot_spot_c: 103, vibration_mm_s: 2.2, oil_dielectric_kv: 34, partial_discharge_pc: 480, load_factor_current: 0.78 },
+      sensors_norm: { temperature_score: 58.1, vibration_score: 34.3, oil_quality_score: 90, partial_discharge_score: 42.2, load_score: 78, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 36, min_temp_c: 24, precipitation_mm: 28, wind_speed_max_kmh: 65, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 55, precipitation_score: 28, wind_storm_score: 89.17, forecast_hours: 72 },
+      grid_impact: { customers_served: 18000, critical_facility_count: 0, critical_facility_names: [], peak_load_mw: 22, downstream_asset_count: 5, has_redundant_path: true },
+      lifecycle: { state: "active", age_years: 28, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 12, insulation_health_pct: 65, cumulative_fault_events: 4, maintenance_overdue_days: 55, average_load_factor: 0.72, failure_count_last_5yr: 1, failures_caused_by_weather: 1, last_failure_days_ago: 425, repeat_fault_active: false, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 28, maintenance_overdue_days: 55, insulation_health_pct: 65, cumulative_fault_events: 4 },
+      history: { failure_count_last_5yr: 1, failures_caused_by_weather: 1, last_failure_days_ago: 425, repeat_mode_flag: false, mean_time_between_failures_days: null },
+    }),
+    A({
+      id: "TX-004", status: "Monitoring", asset_type: "transformer", substation: "Central Business", region: "Central",
+      overall_risk: 45.9, dominant_factor: "weather_risk", commissioned_year: 2003, rated_kva: 50000, rated_voltage_kv: 66,
+      components: { sensor_health: 52.3, weather_risk: 80.2, historical_failure: 21, asset_degradation: 48.4, grid_impact: 18.6 },
+      sensors_raw: { top_oil_temp_c: 78, winding_hot_spot_c: 100, vibration_mm_s: 1.8, oil_dielectric_kv: 38, partial_discharge_pc: 450, load_factor_current: 0.72 },
+      sensors_norm: { temperature_score: 53.5, vibration_score: 22.9, oil_quality_score: 80, partial_discharge_score: 38.9, load_score: 72, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 37, min_temp_c: 26, precipitation_mm: 30, wind_speed_max_kmh: 72, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 60, precipitation_score: 30, wind_storm_score: 95, forecast_hours: 72 },
+      grid_impact: { customers_served: 22000, critical_facility_count: 0, critical_facility_names: [], peak_load_mw: 26, downstream_asset_count: 5, has_redundant_path: true },
+      lifecycle: { state: "active", age_years: 22, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 18, insulation_health_pct: 68, cumulative_fault_events: 4, maintenance_overdue_days: 60, average_load_factor: 0.68, failure_count_last_5yr: 1, failures_caused_by_weather: 0, last_failure_days_ago: 185, repeat_fault_active: false, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 22, maintenance_overdue_days: 60, insulation_health_pct: 68, cumulative_fault_events: 4 },
+      history: { failure_count_last_5yr: 1, failures_caused_by_weather: 0, last_failure_days_ago: 185, repeat_mode_flag: false, mean_time_between_failures_days: null },
+    }),
+    A({
+      id: "TX-005", status: "High", asset_type: "substation", substation: "Harbour Substation", region: "South",
+      overall_risk: 70.7, dominant_factor: "sensor_health", commissioned_year: 1991, rated_kva: 80000, rated_voltage_kv: 110,
+      components: { sensor_health: 77.5, weather_risk: 84.5, historical_failure: 63, asset_degradation: 72.2, grid_impact: 51.2 },
+      sensors_raw: { top_oil_temp_c: 86, winding_hot_spot_c: 112, vibration_mm_s: 2.9, oil_dielectric_kv: 28, partial_discharge_pc: 780, load_factor_current: 0.83 },
+      sensors_norm: { temperature_score: 72.1, vibration_score: 54.3, oil_quality_score: 100, partial_discharge_score: 75.6, load_score: 83, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 35, min_temp_c: 24, precipitation_mm: 55, wind_speed_max_kmh: 88, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 50, precipitation_score: 55, wind_storm_score: 100, forecast_hours: 72 },
+      grid_impact: { customers_served: 28000, critical_facility_count: 1, critical_facility_names: ["Port Authority Control Centre"], peak_load_mw: 28, downstream_asset_count: 7, has_redundant_path: false },
+      lifecycle: { state: "active", age_years: 34, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 6, insulation_health_pct: 41, cumulative_fault_events: 7, maintenance_overdue_days: 110, average_load_factor: 0.79, failure_count_last_5yr: 2, failures_caused_by_weather: 2, last_failure_days_ago: 62, repeat_fault_active: false, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 34, maintenance_overdue_days: 110, insulation_health_pct: 41, cumulative_fault_events: 7 },
+      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 2, last_failure_days_ago: 62, repeat_mode_flag: false, mean_time_between_failures_days: 480 },
+    }),
+    A({
+      id: "TX-006", status: "High", asset_type: "transformer", substation: "Hillcrest", region: "West",
+      overall_risk: 72.3, dominant_factor: "sensor_health", commissioned_year: 1994, rated_kva: 35000, rated_voltage_kv: 33,
+      components: { sensor_health: 79.7, weather_risk: 82.5, historical_failure: 75.5, asset_degradation: 72.9, grid_impact: 48 },
+      sensors_raw: { top_oil_temp_c: 85, winding_hot_spot_c: 112, vibration_mm_s: 3.5, oil_dielectric_kv: 29, partial_discharge_pc: 820, load_factor_current: 0.82 },
+      sensors_norm: { temperature_score: 69.8, vibration_score: 71.4, oil_quality_score: 100, partial_discharge_score: 80, load_score: 82, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 34, min_temp_c: 22, precipitation_mm: 55, wind_speed_max_kmh: 90, storm_warning_level: 3, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 45, precipitation_score: 55, wind_storm_score: 100, forecast_hours: 72 },
+      grid_impact: { customers_served: 28000, critical_facility_count: 1, critical_facility_names: ["Hillcrest Fire Station"], peak_load_mw: 24, downstream_asset_count: 6, has_redundant_path: false },
+      lifecycle: { state: "active", age_years: 31, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 9, insulation_health_pct: 38, cumulative_fault_events: 8, maintenance_overdue_days: 120, average_load_factor: 0.78, failure_count_last_5yr: 2, failures_caused_by_weather: 1, last_failure_days_ago: 45, repeat_fault_active: true, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 31, maintenance_overdue_days: 120, insulation_health_pct: 38, cumulative_fault_events: 8 },
+      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 1, last_failure_days_ago: 45, repeat_mode_flag: true, mean_time_between_failures_days: 600 },
+    }),
+    A({
+      id: "TX-007", status: "Critical", asset_type: "substation", substation: "Waterfront Plaza", region: "East",
+      overall_risk: 95.4, dominant_factor: "sensor_health", commissioned_year: 1982, rated_kva: 120000, rated_voltage_kv: 132,
+      components: { sensor_health: 95.6, weather_risk: 96.8, historical_failure: 100, asset_degradation: 91, grid_impact: 93.8 },
+      sensors_raw: { top_oil_temp_c: 94, winding_hot_spot_c: 124, vibration_mm_s: 4.1, oil_dielectric_kv: 18, partial_discharge_pc: 2200, load_factor_current: 0.91 },
+      sensors_norm: { temperature_score: 92, vibration_score: 88.6, oil_quality_score: 100, partial_discharge_score: 100, load_score: 91, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 38, min_temp_c: 26, precipitation_mm: 82, wind_speed_max_kmh: 115, storm_warning_level: 3, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 65, precipitation_score: 82, wind_storm_score: 100, forecast_hours: 72 },
+      grid_impact: { customers_served: 46000, critical_facility_count: 3, critical_facility_names: ["City General Hospital", "Waterfront Water Treatment", "Fire Station HQ"], peak_load_mw: 44, downstream_asset_count: 9, has_redundant_path: false },
+      lifecycle: { state: "active", age_years: 43, rated_lifespan_years: 40, past_rated_lifespan: true, remaining_life_years: -3, insulation_health_pct: 12, cumulative_fault_events: 13, maintenance_overdue_days: 210, average_load_factor: 0.88, failure_count_last_5yr: 4, failures_caused_by_weather: 3, last_failure_days_ago: 22, repeat_fault_active: true, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 43, maintenance_overdue_days: 210, insulation_health_pct: 12, cumulative_fault_events: 13 },
+      history: { failure_count_last_5yr: 4, failures_caused_by_weather: 3, last_failure_days_ago: 22, repeat_mode_flag: true, mean_time_between_failures_days: 365 },
+    }),
+    A({
+      id: "TX-008", status: "Critical", asset_type: "transformer", substation: "Airport Grid Node", region: "West",
+      overall_risk: 87.1, dominant_factor: "sensor_health", commissioned_year: 1987, rated_kva: 100000, rated_voltage_kv: 132,
+      components: { sensor_health: 92.5, weather_risk: 90, historical_failure: 93, asset_degradation: 82, grid_impact: 75.4 },
+      sensors_raw: { top_oil_temp_c: 91, winding_hot_spot_c: 121, vibration_mm_s: 3.8, oil_dielectric_kv: 22, partial_discharge_pc: 1850, load_factor_current: 0.89 },
+      sensors_norm: { temperature_score: 86, vibration_score: 80, oil_quality_score: 100, partial_discharge_score: 100, load_score: 89, missing_sensor_ratio: 0 },
+      weather_raw: { max_temp_c: 36, min_temp_c: 24, precipitation_mm: 70, wind_speed_max_kmh: 105, storm_warning_level: 3, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 55, precipitation_score: 70, wind_storm_score: 100, forecast_hours: 72 },
+      grid_impact: { customers_served: 38000, critical_facility_count: 2, critical_facility_names: ["Airport Control Tower", "Airport Fuel Pumping Station"], peak_load_mw: 42, downstream_asset_count: 8, has_redundant_path: false },
+      lifecycle: { state: "active", age_years: 38, rated_lifespan_years: 40, past_rated_lifespan: false, remaining_life_years: 2, insulation_health_pct: 20, cumulative_fault_events: 10, maintenance_overdue_days: 175, average_load_factor: 0.85, failure_count_last_5yr: 3, failures_caused_by_weather: 2, last_failure_days_ago: 30, repeat_fault_active: true, fault_history: [], maintenance_history: [], predecessor_asset_id: null },
+      degradation: { age_years: 38, maintenance_overdue_days: 175, insulation_health_pct: 20, cumulative_fault_events: 10 },
+      history: { failure_count_last_5yr: 3, failures_caused_by_weather: 2, last_failure_days_ago: 30, repeat_mode_flag: true, mean_time_between_failures_days: 480 },
+    }),
   ];
-
-  const component_labels = { thermal_risk: "Thermal", vibration_risk: "Vibration", oil_risk: "Oil Quality", weather_risk: "Weather", load_risk: "Load", insulation_risk: "Insulation" };
-  const component_weights = { thermal_risk: 0.21, vibration_risk: 0.18, oil_risk: 0.2, weather_risk: 0.17, load_risk: 0.12, insulation_risk: 0.12 };
-  const assets = raw.map((d) => ({
-    ...d,
-    component_labels,
-    component_weights,
-    components: {
-      thermal_risk: d.overall_risk > 70 ? 88 : d.overall_risk > 40 ? 58 : 34,
-      vibration_risk: d.sensors_norm.vibration_score,
-      oil_risk: d.sensors_norm.oil_quality_score,
-      weather_risk: d.weather_norm.precipitation_score + d.weather_norm.wind_storm_score > 100 ? 96 : d.weather_norm.precipitation_score + d.weather_norm.wind_storm_score,
-      load_risk: Math.max(18, Math.round(d.sensors_raw.load_factor_current * 100)),
-      insulation_risk: d.degradation.insulation_health_pct,
-    },
-    dominant_factor_label: component_labels[d.dominant_factor] || "Asset health",
-  }));
 
   const counts = { Healthy: 0, Monitoring: 0, High: 0, Critical: 0 };
   assets.forEach((a) => { counts[a.status] += 1; });
 
-  const summary = { total: assets.length, counts };
+  const summary = {
+    total: assets.length, counts,
+    average_risk: 54, highest_risk: 95.4,
+    customers_at_risk: 140000, critical_facilities_exposed: 7,
+    regions: {
+      Central: { assets: 2, worst_risk: 45.9, worst_status: "Monitoring" },
+      North: { assets: 1, worst_risk: 8.8, worst_status: "Healthy" },
+      East: { assets: 2, worst_risk: 95.4, worst_status: "Critical" },
+      South: { assets: 1, worst_risk: 70.7, worst_status: "High" },
+      West: { assets: 2, worst_risk: 87.1, worst_status: "Critical" },
+    },
+  };
+  const ranked = [...assets].sort((a, b) => b.overall_risk - a.overall_risk);
   const priorities = {
     generated_at: new Date().toISOString(),
-    maintenance_plan: assets
-      .map((a) => ({
-        asset_id: a.id, rank: 0, substation: a.substation, status: a.status,
-        overall_risk: a.overall_risk, customers_served: a.grid_impact.customers_served,
-        has_redundant_path: a.grid_impact.has_redundant_path, recommended_action: a.recommended_action,
-        action_detail: a.action_detail,
-      }))
-      .sort((x, y) => y.overall_risk - x.overall_risk)
-      .map((item, index) => ({ ...item, rank: index + 1 })),
+    maintenance_plan: ranked.map((a, index) => ({
+      rank: index + 1, asset_id: a.id, substation: a.substation, region: a.region,
+      status: a.status, overall_risk: a.overall_risk,
+      dominant_factor: a.dominant_factor, dominant_factor_label: a.dominant_factor_label,
+      customers_served: a.grid_impact.customers_served,
+      critical_facilities: a.grid_impact.critical_facility_count,
+      has_redundant_path: a.grid_impact.has_redundant_path,
+      recommended_action: a.recommended_action, action_detail: a.action_detail,
+    })),
     crew_prepositioning: [
-      { region: "Central", reason: "High-risk asset cluster near critical hospital load", assets: ["TX-004", "TX-003"] },
-      { region: "East", reason: "Storm exposure and coastal weather load", assets: ["TX-007", "TX-008"] },
+      { region: "East", assets: ["TX-007"], reason: "Storm exposure (weather 96.8/100, warning level 3) on TX-007 (Critical, 95.4/100) — stage crews in East before the front arrives." },
+      { region: "West", assets: ["TX-006", "TX-008"], reason: "Storm exposure (weather 90/100, warning level 3) on TX-008 (Critical, 87.1/100) — stage crews in West before the front arrives." },
+      { region: "South", assets: ["TX-005"], reason: "Storm exposure (weather 84.5/100, warning level 2) on TX-005 (High, 70.7/100) — stage crews in South before the front arrives." },
     ],
   };
 
@@ -140,8 +199,8 @@ function buildMockData() {
     summary,
     priorities,
     briefing: {
-      provider: "local preview",
-      model: "demo-thermal",
+      provider: "mock",
+      model: "offline-mock",
       offline: true,
       warning: "Preview mode active. Backend is not running.",
       env_files: [],
@@ -407,7 +466,10 @@ function alertTitle(a) {
 }
 function alertText(a) {
   if (a.status === "Healthy") return `${a.id} is within normal operating bounds. Dominant factor ${a.dominant_factor_label} scores ${a.components[a.dominant_factor]}/100.`;
-  const top = Object.entries(a.components).sort((x, y) => y[1] - x[1]).slice(0, 2)
+  // Rank by weighted contribution (score × engine weight), matching the
+  // backend's dominant_factor — "likely to fail" and "catastrophic" differ.
+  const w = a.component_weights || {};
+  const top = Object.entries(a.components).sort((x, y) => (y[1] * (w[y[0]] || 0)) - (x[1] * (w[x[0]] || 0))).slice(0, 2)
     .map(([k, v]) => `${a.component_labels[k]} ${v}/100`).join(" · ");
   return `${a.id}: elevated ${top}. ${a.action_detail}.`;
 }
@@ -480,7 +542,7 @@ function renderAssetsTable() {
 /* ---------------- maintenance view ---------------- */
 function renderPlan() {
   const p = S.priorities;
-  $("plan-meta").textContent = `Ranked by risk × grid impact · generated from live engine scores · ${new Date(p.generated_at).toLocaleString()}`;
+  $("plan-meta").textContent = `Ranked by overall risk, grid-impact tie-break · generated from live engine scores · ${new Date(p.generated_at).toLocaleString()}`;
   $("plan-tbody").innerHTML = p.maintenance_plan.map((r) => `<tr data-id="${r.asset_id}">
     <td><b>#${r.rank}</b></td><td><b>${r.asset_id}</b><br><small style="color:var(--faint)">${esc(r.substation)}</small></td>
     <td><span class="status-pill ${r.status}">${r.status}</span></td>
@@ -508,7 +570,10 @@ function openModal(id) {
   const a = S.assets.find((x) => x.id === id);
   if (!a) return;
   const lc = a.lifecycle, h = a.history, d = a.degradation, gi = a.grid_impact, s = a.sensors_raw;
-  const fbars = Object.entries(a.components).sort((x, y) => y[1] - x[1]).map(([k, v]) => `
+  // Order bars by weighted contribution (score × engine weight) so the
+  // top bar always matches the backend's dominant_factor.
+  const _w = a.component_weights || {};
+  const fbars = Object.entries(a.components).sort((x, y) => (y[1] * (_w[y[0]] || 0)) - (x[1] * (_w[x[0]] || 0))).map(([k, v]) => `
     <div class="fbar"><div class="fl"><span>${esc(a.component_labels[k])} <small style="color:var(--faint)">× ${a.component_weights[k].toFixed(2)}</small></span>
     <b style="color:${barColor(v)}">${v}/100</b></div>
     <div class="track"><div class="fill" style="width:${v}%;background:${barColor(v)}"></div></div></div>`).join("");
@@ -633,7 +698,7 @@ function openHelp(kind) {
       eyebrow: "MAINTENANCE CONTROL",
       title: "Turn risk into a response plan",
       lead: "Use Maintenance to prioritize work by risk and grid consequence, then prepare crews for exposed regions.",
-      steps: [["Start at rank one", "The plan is ordered by risk multiplied by grid impact, so the highest-consequence work appears first."], ["Read the action", "The bold recommendation is the proposed intervention; the supporting line explains the operational reason."], ["Check redundancy", "N-1 indicates a redundant path. None means an outage carries higher consequence."], ["Open asset details", "Choose Details for the full evidence record behind a recommendation."], ["Review crews", "Crew Pre-positioning highlights weather-exposed, high-consequence assets by region."]]
+      steps: [["Start at rank one", "The plan is ordered by overall risk with grid impact as the tie-break, so the highest-consequence work appears first."], ["Read the action", "The bold recommendation is the proposed intervention; the supporting line explains the operational reason."], ["Check redundancy", "N-1 indicates a redundant path. None means an outage carries higher consequence."], ["Open asset details", "Choose Details for the full evidence record behind a recommendation."], ["Review crews", "Crew Pre-positioning highlights weather-exposed, high-consequence assets by region."]]
     },
     ai: {
       eyebrow: "GUARD AI",

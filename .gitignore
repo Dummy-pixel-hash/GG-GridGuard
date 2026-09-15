@@ -87,8 +87,15 @@ data/
 logs/
 *.log
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+*.sqlite-shm
+*.sqlite-wal
+
+# ── Local agent/tooling state (never part of the submission) ──────────────────
+.impeccable/
 
 # ── Jupyter Notebooks (optional: remove if you want to commit notebooks) ──────
 # .ipynb_checkpoints/

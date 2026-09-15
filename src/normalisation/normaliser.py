@@ -276,7 +276,8 @@ def _normalise_degradation(
     load_factor_current is the *current* load fraction; average_load_factor
     in the degradation record is the historic average.  We use the historic
     average for the degradation state (long-run wear) — the current load
-    factor feeds into a future dynamic scoring layer, not the static engine.
+    factor is normalised to load_score and weighted into the sensor-health
+    component (5%) as a real-time stress signal.
     """
     insulation_health_score: Optional[float] = None
     if deg.insulation_health_pct is not None:

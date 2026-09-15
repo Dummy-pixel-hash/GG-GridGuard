@@ -137,6 +137,11 @@ def run(port: int, db_path: str) -> None:
     info = STATE.briefing_info()
     print(f"GridGuard UI: scored {total} assets from the live risk engine.", flush=True)
     print(f"GridGuard UI: database at {db_path}", flush=True)
+    live_n = sum(1 for v in STATE.weather_live.values() if v)
+    if live_n:
+        print(f"GridGuard UI: live Open-Meteo weather for {live_n}/{total} assets", flush=True)
+    else:
+        print("GridGuard UI: staged static demo weather (set GRIDGUARD_LIVE_WEATHER=1 for live refresh)", flush=True)
     if STATE.env_files:
         print(f"GridGuard UI: loaded env from {', '.join(STATE.env_files)}", flush=True)
     else:

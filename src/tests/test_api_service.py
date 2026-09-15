@@ -7,9 +7,11 @@ no network, no credentials, and no running server.
 
 Note on live weather
 --------------------
-GridState attempts a live Open-Meteo weather refresh at startup.  These tests
-patch ``_refresh_asset_weather`` to return the static demo records unchanged so
-test results are deterministic regardless of network availability.
+GridState uses the staged static demo weather by default (deterministic)
+and only attempts a live Open-Meteo refresh when GRIDGUARD_LIVE_WEATHER=1
+is set.  These tests stub ``_refresh_asset_weather`` to return the static
+demo records unchanged so results are deterministic regardless of network
+availability or environment.
 """
 
 import sys
@@ -30,8 +32,11 @@ from risk_engine.calculator import score_asset
 
 
 def _state() -> GridState:
-    """GridState with live weather refresh stubbed out."""
-    with patch.object(_gs_module, "_refresh_asset_weather", side_effect=lambda assets: assets):
+    """GridState with live weather refresh stubbed out (static demo data)."""
+    def _static(assets):
+        return assets, {r.metadata.asset_id: False for r in assets}
+
+    with patch.object(_gs_module, "_refresh_asset_weather", side_effect=_static):
         return GridState(db_path=":memory:")
 
 
@@ -138,10 +143,11 @@ class TestWeatherRefreshHelper:
             "api.grid_service.fetch_weather_with_fallback",
             return_value=(TX_007.weather, False),  # live=False → fallback used
         ):
-            result = _refresh_asset_weather([TX_007])
+            result, live = _refresh_asset_weather([TX_007])
 
         assert len(result) == 1
         assert result[0].weather is TX_007.weather  # exact same object — not replaced
+        assert live == {"TX-007": False}
 
     def test_live_weather_replaces_static_when_available(self):
         """When Open-Meteo succeeds, the fresh observation replaces static data."""
@@ -160,11 +166,12 @@ class TestWeatherRefreshHelper:
             "api.grid_service.fetch_weather_with_fallback",
             return_value=(fresh, True),  # live=True → fresh data used
         ):
-            result = _refresh_asset_weather([TX_001])
+            result, live = _refresh_asset_weather([TX_001])
 
         assert len(result) == 1
         assert result[0].weather is fresh
         assert result[0].metadata is TX_001.metadata  # other fields unchanged
+        assert live == {"TX-001": True}
 
     def test_original_records_not_mutated(self):
         """_refresh_asset_weather must not modify the input records in place."""
@@ -181,10 +188,11 @@ class TestWeatherRefreshHelper:
             "api.grid_service.fetch_weather_with_fallback",
             return_value=(fresh, True),
         ):
-            _refresh_asset_weather([TX_001])
+            result, live = _refresh_asset_weather([TX_001])
 
         # TX_001 must not have been mutated
         assert TX_001.weather.storm_warning_level == original_storm_level
+        assert live == {"TX-001": True}
 
     def test_gridstate_uses_live_weather_when_network_available(self):
         """GridState._raw should reflect live weather when Open-Meteo returns data."""
@@ -202,21 +210,43 @@ class TestWeatherRefreshHelper:
             """Simulate: TX-007 gets live weather, all others get static fallback."""
             import copy as _copy
             updated = []
+            live: dict[str, bool] = {}
             for raw in assets:
-                if raw.metadata.asset_id == "TX-007":
+                aid = raw.metadata.asset_id
+                if aid == "TX-007":
                     r2 = _copy.copy(raw)
                     r2.weather = fresh_wx
                     updated.append(r2)
+                    live[aid] = True
                 else:
                     updated.append(raw)
-            return updated
+                    live[aid] = False
+            return updated, live
 
         with patch.object(_gs_module, "_refresh_asset_weather", side_effect=fake_refresh):
-            gs = GridState(db_path=":memory:")
+            with patch.object(_gs_module, "_live_weather_enabled", return_value=True):
+                gs = GridState(db_path=":memory:")
 
         served = gs.get_asset("TX-007")
         assert served["weather_raw"]["max_temp_c"] == 40.0
         assert served["weather_raw"]["wind_speed_max_kmh"] == 118.0
+        assert gs.weather_live["TX-007"] is True
+        assert gs.weather_live["TX-001"] is False
+
+    def test_gridstate_static_by_default(self):
+        """Without GRIDGUARD_LIVE_WEATHER=1 no network refresh is attempted."""
+        import os
+
+        with patch.object(_gs_module, "_refresh_asset_weather") as refresh_mock:
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop("GRIDGUARD_LIVE_WEATHER", None)
+                with patch.object(
+                    _gs_module, "_live_weather_enabled", return_value=False
+                ):
+                    gs = GridState(db_path=":memory:")
+        refresh_mock.assert_not_called()
+        assert all(v is False for v in gs.weather_live.values())
+        assert len(gs.weather_live) == 8
 
 class TestGroundedFallbackRanking:
     """Verify _grounded_fallback ranks by weighted contribution, not raw score."""

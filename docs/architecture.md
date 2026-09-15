@@ -52,10 +52,10 @@ graph TD
 | Degradation & lifecycle engine | **Python — `src/lifecycle/`** | Pure-function state machine: `apply_fault`, `apply_maintenance`, `apply_repair`, `apply_replacement`, `advance_age`. Three states: ACTIVE / FAULTED / RETIRED. Fault stress degrades `insulation_health_pct`; repair improves it. `apply_replacement` retires the physical unit (full history preserved in `RetiredAssetRecord`) and creates a clean-state successor with `predecessor_asset_id` lineage link. `advance_age` only increments age — `maintenance_overdue_days` is managed by maintenance/repair events, not age ticks. |
 | Risk engine | **Python — `src/risk_engine/`** | Composite 0–100 score per asset from five factor groups: sensor health (30%), weather (20%), historical failure (15%), asset degradation (15%), grid impact (20%). Bands: Normal/Watch/High/Critical. Sensor health includes current load (5%) and a 40-pt missing-sensor floor. Historical failure includes MTBF sub-signal (0–10 pts). |
 | Grid impact model | **Python — `src/risk_engine/scoring/grid_impact.py`** | Consequence-of-failure score from customers served, critical facilities, peak load, downstream cascade, and N-1 redundancy. Non-critical sub-scores discounted 40% when N-1 path exists; critical-facility points are never discounted. |
-| Prioritization & planning | **Python — `src/api/grid_service.py`** | Assets ranked by overall risk then grid impact into a prioritized day's work order list. Crew pre-positioning identifies weather-exposed (weather risk ≥60 or storm level ≥2) high-consequence (risk ≥70 or critical facilities > 0) assets and groups them by region for pre-storm staging. |
+| Prioritization & planning | **Python — `src/api/grid_service.py`** | Assets ranked by overall risk with the grid-impact component as tie-break into a prioritized day's work order list. Crew pre-positioning identifies weather-exposed (weather risk ≥60 or storm level ≥2) high-consequence (risk ≥70 or critical facilities > 0) assets and groups them by region for pre-storm staging. |
 | AI briefing layer | **Python — `src/ai_briefing/`** | LLM-generated explanations of risk factors and recommended actions, grounded in engine-computed scores. Provider-agnostic: any OpenAI-compatible endpoint works. Configurable via `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. Falls back to deterministic `MockProvider` when no credentials are set (safe for CI/offline). IBM watsonx.ai is supported as an optional provider. |
 | Operator interface | IBM Bob (MCP tool integration — planned) | Natural-language queries over risk, rankings, plans, and briefings. Bob is part of the hackathon development workflow; GridGuard runs independently without it. |
-| Weather source | Open-Meteo API — `src/weather/` | 72-hour forecast per asset location: temperature, rainfall, wind gust speed, storm severity (no API key required). Refreshed live at `GridState` startup via `fetch_weather_with_fallback`; static demo data kept on network failure. |
+| Weather source | Open-Meteo API — `src/weather/` | 72-hour forecast per asset location: temperature, rainfall, wind gust speed, storm severity (no API key required). Static staged scenario by default; live refresh at `GridState` startup only when `GRIDGUARD_LIVE_WEATHER=1` via `fetch_weather_with_fallback`; static demo data kept on network failure. |
 | Storage | SQLite — `src/storage/` | Asset registry, lifecycle records, risk results. Schema in `src/storage/schema.py`. |
 
 ## Data Flow
@@ -63,17 +63,19 @@ graph TD
 1. Asset registry, sensor telemetry, and incident records are loaded for a
    representative distribution network (8-asset synthetic demo dataset in
    `src/data/`).
-2. Open-Meteo 72-hour forecasts are fetched per asset location at startup
-   (temperature, rainfall, wind gust speed, storm severity). This is
-   best-effort: if the fetch fails for an individual asset its static demo
-   weather is kept. `storm_warning_level` is derived from actual forecast
+2. Each asset carries a staged static weather scenario (temperature,
+   rainfall, wind gust speed, storm severity) so every run is
+   reproducible.  Operators can opt into live Open-Meteo 72-hour forecasts
+   per asset location with `GRIDGUARD_LIVE_WEATHER=1`: the refresh is
+   best-effort and any asset whose fetch fails keeps its static demo
+   weather.  `storm_warning_level` is derived from actual forecast
    values via `classify_storm_level`.
 3. The degradation & lifecycle engine maintains per-asset degradation state;
    a replacement spawns a clean-state successor while the predecessor's
    history is preserved.
 4. The risk engine computes a 0–100 composite score per asset from the five
-   factor groups; scores aggregate by substation/area into outage-prone-area
-   views.
+   factor groups; the fleet summary rolls scores up by region (asset count,
+   worst risk and worst status per region).
 5. The grid impact model computes a consequence-of-failure score per asset.
 6. Prioritization ranks assets by risk + grid impact into the maintenance
    plan; the storm window filters weather-exposed, high-impact assets into

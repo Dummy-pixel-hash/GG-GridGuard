@@ -38,7 +38,7 @@ apply_replacement:
     RETIRED → LifecycleError        (cannot replace an already-retired asset)
 
 advance_age:
-    ACTIVE  → ACTIVE    (time passing; age_years incremented, overdue grows)
+    ACTIVE  → ACTIVE    (time passing; age_years incremented only)
     FAULTED → FAULTED   (time passes while asset awaits repair)
     RETIRED → LifecycleError
 

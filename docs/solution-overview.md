@@ -38,9 +38,10 @@ demonstration interface; it is not a runtime dependency.
    Non-critical sub-scores are discounted 40% when a redundant supply path
    exists; critical-facility points are never discounted.
    See `src/risk_engine/scoring/grid_impact.py`.
-6. **Prioritize** — assets are ranked by combined risk and grid impact into a
-   prioritized maintenance plan; crew pre-positioning focuses on
-   weather-exposed, high-impact assets ahead of forecast events.
+6. **Prioritize** — assets are ranked by overall risk with the grid-impact
+   component as tie-break into a prioritized maintenance plan; crew
+   pre-positioning focuses on weather-exposed, high-impact assets ahead of
+   forecast events.
 7. **Explain** — for high-priority assets, an AI briefing explains the
    contributing factors in plain language and recommends concrete actions
    (inspect, accelerate maintenance, transfer load, pre-position crews).
@@ -55,13 +56,13 @@ demonstration interface; it is not a runtime dependency.
 See [architecture.md](architecture.md) for the full diagram and data flow.
 
 ```
-asset sensors + weather (Open-Meteo) + incident history + degradation/lifecycle
+asset sensors + weather (staged static scenario; opt-in live Open-Meteo) + incident history + degradation/lifecycle
         │
         ▼
-  risk engine  ──►  0–100 score per asset  ──►  outage-prone-area views
+  risk engine  ──►  0–100 score per asset  ──►  regional roll-up (worst risk per region)
         │
         ▼
-  prioritization (risk × grid impact)  ──►  maintenance plan + crew pre-positioning
+  prioritization (overall risk, grid-impact tie-break)  ──►  maintenance plan + crew pre-positioning
         │
         ▼
   AI briefing layer  ──►  grounded prompts  ──►  LLM endpoint (configurable)
@@ -132,14 +133,17 @@ Implemented:
   threshold corrected to 0 °C neutral
 - Normalisation layer (`src/normalisation/`) + IEC-based thresholds
 - Synthetic demo dataset: 8 assets across all four risk bands (`src/data/`)
-- Open-Meteo weather integration (`src/weather/`) — live refresh at startup via
-  `fetch_weather_with_fallback`; injectable `HttpClient` for offline tests; `classify_storm_level`
+- Open-Meteo weather integration (`src/weather/`) — staged static scenario
+  by default for a reproducible demo; opt-in live refresh at startup via
+  `GRIDGUARD_LIVE_WEATHER=1` (`fetch_weather_with_fallback`); injectable
+  `HttpClient` for offline tests; `classify_storm_level`
   derives warning level from actual forecast values
 - Lifecycle engine (`src/lifecycle/`) — pure/immutable state machine: ACTIVE / FAULTED / RETIRED;
   `advance_age` no longer accrues overdue days (managed by maintenance/repair events only)
 - Storage layer (`src/storage/`) — SQLite; asset registry, lifecycle records, risk results, retired assets
-- Prioritization & planning (`src/api/grid_service.py`) — assets ranked by risk then grid impact into
-  a work order list; crew pre-positioning by region for storm-exposed, high-consequence assets
+- Prioritization & planning (`src/api/grid_service.py`) — assets ranked by
+  overall risk with grid-impact tie-break into a work order list; crew
+  pre-positioning by region for storm-exposed, high-consequence assets
 - AI briefing layer (`src/ai_briefing/`) — `BriefingContextBuilder` (grounded context); `OpenAIProvider`
   (any OpenAI-compatible endpoint); `WatsonxProvider` (optional IBM watsonx.ai); `MockProvider`
   (deterministic, no network); `BriefingService` with conversational history support; `load_score`

@@ -195,7 +195,7 @@ TX_003 = RawAssetRecord(
 # TX-004  Central Business — WATCH
 # 22-year-old 50 MVA transformer in a CBD.  Sensor readings moderate but
 # rising; oil degrading.  One failure 6 months ago.  Heat wave + storm
-# advisory arriving; highest temperatures of the year forecast.
+# watch in effect; highest temperatures of the year forecast.
 # N-1 redundancy present; significant commercial load.
 # ===========================================================================
 TX_004 = RawAssetRecord(
@@ -216,7 +216,7 @@ TX_004 = RawAssetRecord(
     weather=RawWeatherObservation(
         max_temp_c=37.0, min_temp_c=26.0,   # peak summer heat wave
         precipitation_mm=30.0, wind_speed_max_kmh=72.0,
-        storm_warning_level=1, forecast_hours=72,
+        storm_warning_level=2, forecast_hours=72,  # 72 km/h ≥ watch threshold → level 2
     ),
     incidents=RawIncidentRecord(
         failure_count_last_5yr=1, failures_caused_by_weather=0,

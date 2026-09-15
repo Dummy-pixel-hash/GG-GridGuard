@@ -3,8 +3,10 @@
 This package does NOT reimplement any backend logic.  It only:
 
 1. Loads the synthetic demo records from ``data.demo_assets``.
-2. Optionally refreshes each asset's weather from Open-Meteo (best-effort;
-   falls back to static demo data if the network is unavailable).
+2. Uses the staged static demo weather by default so the demo is
+   deterministic (opt-in live Open-Meteo refresh via
+   ``GRIDGUARD_LIVE_WEATHER=1``; best-effort per asset, static kept on
+   network failure).
 3. Normalises them with ``normalisation.normaliser.normalise``.
 4. Scores them with ``risk_engine.calculator.score_asset``.
 5. Seeds / reads the existing SQLite storage layer (assets, topology,
@@ -145,10 +147,25 @@ _ACTION_BY_STATUS = {
 
 
 # ---------------------------------------------------------------------------
-# Live weather refresh helper
+# Live weather refresh helper (opt-in — demo is static by default)
 # ---------------------------------------------------------------------------
 
-def _refresh_asset_weather(assets: list[RawAssetRecord]) -> list[RawAssetRecord]:
+def _live_weather_enabled() -> bool:
+    """True only when the operator explicitly opts into live weather.
+
+    The staged static demo weather is the default so that scores, bands,
+    and crew recommendations are reproducible for every run and recording.
+    Set ``GRIDGUARD_LIVE_WEATHER=1`` to attempt a best-effort live
+    Open-Meteo refresh per asset instead.
+    """
+    return os.getenv("GRIDGUARD_LIVE_WEATHER", "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _refresh_asset_weather(
+    assets: list[RawAssetRecord],
+) -> tuple[list[RawAssetRecord], dict[str, bool]]:
     """
     Attempt to replace each asset's static demo weather with a live Open-Meteo
     72-hour forecast for its geographic location.
@@ -157,26 +174,30 @@ def _refresh_asset_weather(assets: list[RawAssetRecord]) -> list[RawAssetRecord]
     API timeout, parse failure), that asset keeps its existing static weather.
     Never raises — startup must not fail due to weather unavailability.
 
-    Returns a new list of ``RawAssetRecord`` objects; originals are not mutated.
+    Returns ``(records, live_flags)`` where ``live_flags`` maps asset_id to
+    True when that asset's weather came from the API.  Originals are not
+    mutated.
     """
     refreshed: list[RawAssetRecord] = []
+    live: dict[str, bool] = {}
     for raw in assets:
         loc = raw.metadata.location
-        obs, live = fetch_weather_with_fallback(
+        obs, is_live = fetch_weather_with_fallback(
             lat=loc.latitude,
             lon=loc.longitude,
             fallback=raw.weather,
             forecast_hours=72,
             timeout_s=8.0,
         )
-        if live:
+        if is_live:
             # Replace weather on a shallow copy of the record (other fields unchanged)
             updated = copy.copy(raw)
             updated.weather = obs
             refreshed.append(updated)
         else:
             refreshed.append(raw)
-    return refreshed
+        live[raw.metadata.asset_id] = is_live
+    return refreshed, live
 
 
 # ---------------------------------------------------------------------------
@@ -200,17 +221,23 @@ class GridState:
         self._retired_repo = RetiredRepository(self.conn)
         self._risk_repo = RiskResultRepository(self.conn)
 
-        # Attempt a live weather refresh from Open-Meteo for every asset.
-        # This replaces the static demo weather values with real forecast data.
-        # Best-effort: if the network is unavailable the static demo data is kept.
-        live_assets = _refresh_asset_weather(list(ALL_ASSETS))
+        # Weather: staged static demo data by default (deterministic demo).
+        # Live Open-Meteo refresh only when explicitly opted in via
+        # GRIDGUARD_LIVE_WEATHER=1; per-asset fallback keeps static data
+        # whenever the network is unavailable.
+        if _live_weather_enabled():
+            live_assets, self.weather_live = _refresh_asset_weather(list(ALL_ASSETS))
+        else:
+            live_assets = list(ALL_ASSETS)
+            self.weather_live = {
+                r.metadata.asset_id: False for r in ALL_ASSETS
+            }
 
         # Keep raw records by id for telemetry/weather detail.
+        # (self.weather_live was populated above: True per asset iff that
+        # asset's weather came from the live API.)
         self._raw: dict[str, RawAssetRecord] = {
             r.metadata.asset_id: r for r in live_assets
-        }
-        self.weather_live: dict[str, bool] = {
-            r.metadata.asset_id: False for r in ALL_ASSETS
         }
 
         # Normalised inputs + engine results by id.
