@@ -17,7 +17,7 @@ team:
   members:
     - name: "Rishabh Jigneshkumar Patel"                         # REQUIRED — fill in member names and emails before submission
       email: "26dce082@charusat.edu.in"
-    - name: "Kartikey upadhyay"
+    - name: "Kartikey jayesh upadhyay"
       email: "26dcs129@charusat.edu.in"
     - name: "Dhyey Patel"
       email: "26dcs078@charusat.edu.in"
@@ -88,9 +88,8 @@ submission:
     The demo runs on 8 synthetic assets; no real utility data or customer PII is
     included. The weather × condition interaction is additive rather than
     multiplicative (a degraded asset in a storm scores the sum, not the product);
-    a cross-component multiplier is a natural next step. IBM Bob MCP tool
-    integration is planned but not yet implemented — GridGuard runs as a
-    standalone application without it.
+    a cross-component multiplier is a natural next step. GridGuard runs as a
+    standalone application.
 
 # =============================================================================
 # ARTIFACT LOCATIONS
