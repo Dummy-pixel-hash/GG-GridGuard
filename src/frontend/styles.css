@@ -168,11 +168,7 @@ select option{background:var(--panel);color:var(--text)}
 .dot.high{background:var(--orange)}
 .dot.critical{background:var(--red)}
 .netmap{position:relative;height:540px;border-radius:8px;overflow:hidden;
-  background:
-    radial-gradient(700px 320px at 30% 18%, rgba(255,255,255,.4), transparent 70%),
-    repeating-linear-gradient(0deg, rgba(85,105,75,.10) 0 1px, transparent 1px 44px),
-    repeating-linear-gradient(90deg, rgba(85,105,75,.10) 0 1px, transparent 1px 44px),
-    #e7ebdd;
+  background:#d9d9d9;
   border:1px solid var(--line-soft)}
 .map-canvas{position:absolute;inset:0;transform-origin:center center;transition:transform .2s ease}
 .map-toolbar{position:absolute;top:12px;right:12px;z-index:5;display:flex;align-items:center;gap:5px;
@@ -182,7 +178,7 @@ select option{background:var(--panel);color:var(--text)}
   cursor:pointer;font:inherit;font-size:16px;line-height:1;transition:background .15s}
 .map-tool:hover{background:var(--surface-chip)}
 .map-tool.map-reset{font-family:var(--font);font-size:11px;color:var(--muted)}
-.netlines{position:absolute;inset:0;width:100%;height:100%}
+.netlines{position:absolute;top:-35%;left:-35%;width:170%;height:170%}
 .zone{position:absolute;color:var(--faint);font-size:11px;letter-spacing:1.6px;font-weight:700}
 .z-north{top:26%;left:46%}.z-central{top:52%;left:44%}.z-west{top:66%;left:3%}
 .z-east{top:58%;right:4%}.z-south{bottom:6%;left:42%}

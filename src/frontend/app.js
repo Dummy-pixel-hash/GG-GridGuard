@@ -211,8 +211,9 @@ function renderKPIs() {
     kpi("high", "⬢", c.High, "High", "High") +
     kpi("critical", "⬢", c.Critical, "Critical", "Critical");
   $("kpis").querySelectorAll(".kpi").forEach((b) => b.onclick = () => {
-    S.filters.status = b.dataset.status;
-    $("f-status").value = b.dataset.status;
+    // Clicking the active status filter toggles it back off.
+    S.filters.status = (b.dataset.status && S.filters.status !== b.dataset.status) ? b.dataset.status : "";
+    $("f-status").value = S.filters.status;
     refreshFiltered();
   });
 }
@@ -254,6 +255,7 @@ function renderMap() {
     const [x, y] = POS[id] || [10 + i * 10, 50];
     const el = document.createElement("button");
     el.type = "button";
+    el.dataset.nodeId = id;
     el.className = `node st-${a.status}` + (a.status === "Critical" ? " pulse" : "") +
       (S.selected === id ? " selected" : "");
     el.style.left = x + "%"; el.style.top = y + "%";
@@ -265,7 +267,7 @@ function renderMap() {
       <span><span class="nid">${esc(a.id)}</span><br><span class="ntype">${esc(cap(a.asset_type))}</span></span>
       <span class="nrisk" style="color:${barColor(a.overall_risk)}">${a.overall_risk}</span>
       <span class="ndot" aria-hidden="true"></span>`;
-    el.onclick = () => { S.selected = id; renderMap(); renderSide(); };
+    el.onclick = () => selectNode(id);
     el.ondblclick = () => openModal(id);
     box.appendChild(el);
   });
@@ -275,17 +277,47 @@ function renderMap() {
   // connection lines
   const svg = $("netlines");
   const pts = ORDER.map((id) => POS[id]);
-  svg.setAttribute("viewBox", "0 0 100 100");
-  svg.innerHTML = EDGES.filter(([a, b]) => pts[a] && pts[b]).map(([a, b]) => {
+  svg.setAttribute("viewBox", "-35 -35 170 170");
+  const streets = buildStreets();
+  const lines = EDGES.filter(([a, b]) => pts[a] && pts[b]).map(([a, b]) => {
     return `<line x1="${pts[a][0]}" y1="${pts[a][1]}" x2="${pts[b][0]}" y2="${pts[b][1]}"
-      stroke="#8da086" stroke-opacity="0.6" stroke-width="0.35" vector-effect="non-scaling-stroke"/>`;
+      stroke="#7f957a" stroke-opacity="0.7" stroke-width="1.25" vector-effect="non-scaling-stroke"/>`;
   }).join("");
+  svg.innerHTML = streets + `<g>${lines}</g>`;
+}
+
+/* Selection updates the existing nodes in place so the rest of the map
+   stays static — no rebuild, no replayed entrance animation. */
+function selectNode(id) {
+  S.selected = id;
+  document.querySelectorAll("#nodes .node").forEach((n) => {
+    const on = n.dataset.nodeId === id;
+    n.classList.toggle("selected", on);
+    n.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+  renderSide();
 }
 
 function setMapZoom(next) {
   S.mapZoom = Math.min(1.6, Math.max(0.8, next));
   $("map-canvas").style.transform = `scale(${S.mapZoom})`;
   $("map-zoom-level").textContent = `${Math.round(S.mapZoom * 100)}%`;
+}
+
+/* Quiet map canvas: five major roads across the bleed area so zooming never
+   exposes bare canvas. No minor fabric — the data stays the hierarchy.
+   Pure dressing; all data rides on top of it. */
+function buildStreets() {
+  let s = `<g fill="none" vector-effect="non-scaling-stroke" aria-hidden="true">`;
+  // Three arterials: straight diagonal connectors across the bleed
+  [["M30,-60 L60,160", 2.5], ["M-45,20 L145,58", 2.5], ["M-45,90 L145,26", 2.5]].forEach(([d, w]) => {
+    s += `<path d="${d}" stroke="#ffffff" stroke-width="${w}" stroke-opacity="0.95"/>`;
+  });
+  // Two highways: dark casing + white fill, smooth beziers
+  [["M-45,74 C30,62 65,84 145,42"], ["M15,-45 C36,42 58,74 95,145"]].forEach(([d]) => {
+    s += `<path d="${d}" stroke="#c6c6c6" stroke-width="6"/><path d="${d}" stroke="#ffffff" stroke-width="4"/>`;
+  });
+  return s + `</g>`;
 }
 
 /* ---------------- side panel ---------------- */
@@ -396,7 +428,7 @@ function renderQueue() {
       <span class="qd">${a.status} · ${esc(a.dominant_factor_label)} · ${fmtInt(a.grid_impact.customers_served)} customers</span>
     </button>`).join("");
   document.querySelectorAll(".qcard").forEach((c) => c.onclick = () => {
-    S.selected = c.dataset.id; renderMap(); renderSide();
+    selectNode(c.dataset.id);
     document.querySelector(".overview-grid").scrollIntoView({ behavior: "smooth", block: "nearest" });
   });
 }
