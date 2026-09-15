@@ -46,16 +46,13 @@ main{position:relative;z-index:1;max-width:1460px;margin:0 auto;padding:18px 22p
 .topbar{position:sticky;top:0;z-index:50;display:flex;align-items:center;gap:30px;
   min-height:76px;padding:14px 28px 16px;background:var(--panel);
   border-bottom:1px solid var(--line-soft); box-shadow:var(--shadow)}
-.brand{display:flex;align-items:center;gap:0;min-width:0;color:var(--accent);
-  background:none;border:0;padding:0;font:inherit;cursor:pointer;border-radius:8px}
-.brand-mark{display:grid;place-items:center;width:42px;height:42px;flex:none;
-  background:var(--accent);border:1px solid var(--accent);border-radius:8px}
-.brand-mark .gg{font-size:18px;font-weight:800;letter-spacing:.5px;color:var(--on-accent);line-height:1}
-.brand-text{display:block;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;
-  transition:max-width .28s ease,opacity .2s ease}
-.brand-text strong{font-size:24px;letter-spacing:.2px;display:block;line-height:1.1;font-weight:700;color:var(--accent);white-space:nowrap}
-.brand-text small{color:var(--muted);font-size:12px;white-space:nowrap}
-.brand:hover .brand-text,.brand:focus-visible .brand-text{max-width:260px;opacity:1;margin-left:12px}
+.brand{display:inline-flex;align-items:center;min-width:0;color:var(--accent);
+  background:none;border:0;padding:8px 6px;font:inherit;cursor:pointer;border-radius:8px}
+.brand-word{display:inline-flex;align-items:baseline;font-size:25px;line-height:1.1;letter-spacing:.2px}
+.bw-g{font-weight:800;color:var(--accent)}
+.bw-rest{display:inline-block;max-width:0;opacity:0;overflow:hidden;white-space:nowrap;
+  font-weight:700;color:var(--accent);transition:max-width .3s ease,opacity .2s ease}
+.brand:hover .bw-rest,.brand:focus-visible .bw-rest{max-width:3.2em;opacity:1}
 .tabs{display:flex;align-items:center;gap:22px;background:transparent;border:0;
   border-radius:0;padding:0}
 .tab{background:transparent;border:0;color:var(--muted);font-size:14.5px;font-weight:600;
@@ -202,7 +199,7 @@ select option{background:var(--panel);color:var(--text)}
   padding:12px 18px;font-size:13px;color:var(--muted);white-space:nowrap}
 @media (prefers-reduced-motion: reduce){
   .node,.qcard,.kpi,.msg,.map-canvas{animation:none!important;transition:none!important}
-  .brand-text{transition:none!important}
+  .bw-rest{transition:none!important}
   .node.pulse{animation:none!important}
   .typing-row span{animation:none!important;opacity:.6}
   .riskbar .fill,.fbar .fill{transition:none!important}
@@ -506,10 +503,7 @@ details.m-card[open] summary{margin-bottom:10px}
   .operator{font-size:12.5px}
   .live-time{min-width:0}
   .brand{min-width:0}
-  .brand-mark{width:40px;height:40px}
-  .brand-mark .gg{font-size:17px}
-  .brand-text strong{font-size:22px}
-  .brand-text small{font-size:10px}
+  .brand-word{font-size:22px}
   .head-filters{flex-wrap:wrap}
   .search{flex-basis:100%}
   .msg{max-width:100%}

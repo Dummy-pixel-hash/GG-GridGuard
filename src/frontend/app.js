@@ -12,8 +12,8 @@ const S = {
 };
 
 const COLORS = { Healthy: "#187245", Monitoring: "#8a6a0c", High: "#b45309", Critical: "#b42318" };
-const ICON_TX = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8.6 2.5v5.4M15.4 2.5v5.4M8.6 18.1v3.4M15.4 18.1v3.4"/><circle cx="8.6" cy="13" r="5.1"/><circle cx="15.4" cy="13" r="5.1"/></svg>`;
-const ICON_SUB = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5.5h18" stroke-width="2.4"/><path d="M6.5 5.5v4.5M12 5.5v4.5M17.5 5.5v4.5M6.5 13.6V21M12 13.6V21M17.5 13.6V21"/><rect x="4.7" y="10" width="3.6" height="3.6"/><rect x="10.2" y="10" width="3.6" height="3.6"/><rect x="15.7" y="10" width="3.6" height="3.6"/></svg>`;
+const ICON_TX = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8 4.5h3M13 4.5h3M9.5 4.5V8M14.5 4.5V8"/><rect x="6.5" y="8" width="11" height="10" rx="1.5"/><path d="M4 10.5h2.5M4 13h2.5M4 15.5h2.5M17.5 10.5h2.5M17.5 13h2.5M17.5 15.5h2.5M5.5 21h13"/></svg>`;
+const ICON_SUB = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5V6M10.9 8.5L12 6L13.1 8.5"/><path d="M9.2 21L11 8.5M14.8 21L13 8.5"/><path d="M8 10.5h8M6.8 14.5h10.4M9.7 18.5h4.6"/><path d="M9.5 10.5v2.5M14.5 10.5v2.5M8.3 14.5v2.5M15.7 14.5v2.5"/></svg>`;
 const TYPE_ICON = { transformer: ICON_TX, substation: ICON_SUB };
 const POS = {
   "TX-001": [11, 17], "TX-002": [33, 15], "TX-003": [58, 16], "TX-004": [82, 16],
