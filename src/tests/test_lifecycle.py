@@ -551,22 +551,25 @@ class TestAdvanceAge:
         result = advance_age(r, 1.0)
         assert result.age_years == pytest.approx(11.0)
 
-    def test_overdue_accumulated(self):
+    def test_overdue_not_changed_by_age_advance(self):
+        # advance_age no longer touches maintenance_overdue_days; overdue is
+        # managed exclusively by apply_maintenance / apply_repair events.
         r = _active_asset(maintenance_overdue_days=0)
         result = advance_age(r, 1.0)
-        assert result.maintenance_overdue_days == 365
+        assert result.maintenance_overdue_days == 0
 
     def test_fractional_year(self):
         r = _active_asset(age_years=10.0)
         result = advance_age(r, 0.5)
         assert result.age_years == pytest.approx(10.5)
-        # round(0.5 * 365) = round(182.5) = 182 (Python uses banker's rounding)
-        assert result.maintenance_overdue_days == 182
+        # maintenance_overdue_days is NOT modified by advance_age
+        assert result.maintenance_overdue_days == r.maintenance_overdue_days
 
-    def test_existing_overdue_accumulates(self):
+    def test_existing_overdue_preserved_after_age_advance(self):
+        # Pre-existing overdue days are carried over unchanged.
         r = _active_asset(maintenance_overdue_days=30)
         result = advance_age(r, 1.0)
-        assert result.maintenance_overdue_days == 395  # 30 + 365
+        assert result.maintenance_overdue_days == 30  # unchanged
 
     def test_faulted_age_advances(self):
         r = _active_asset()
@@ -682,13 +685,16 @@ class TestEventSequences:
         assert result.retired.cumulative_fault_events == 1
         assert result.successor.predecessor_asset_id == r.asset_id
 
-    def test_maintenance_resets_overdue_then_age_accumulates_again(self):
-        r = _active_asset(maintenance_overdue_days=0)
-        r = advance_age(r, 2.0)          # +730 days overdue
+    def test_maintenance_resets_overdue_then_overdue_managed_explicitly(self):
+        # advance_age no longer accrues overdue; maintenance interval tracking
+        # is the caller's responsibility.  This test verifies that:
+        #   1. apply_maintenance correctly reduces the overdue counter.
+        #   2. advance_age does NOT re-introduce overdue days.
+        r = _active_asset(maintenance_overdue_days=730)
         r = apply_maintenance(r, MaintenanceEvent(overdue_days_resolved=730))
         assert r.maintenance_overdue_days == 0
-        r = advance_age(r, 1.0)          # +365 days overdue
-        assert r.maintenance_overdue_days == 365
+        r = advance_age(r, 1.0)
+        assert r.maintenance_overdue_days == 0  # advance_age does not add overdue
 
     def test_multiple_faults_5yr_window_accurate(self):
         r = _active_asset()

@@ -36,16 +36,24 @@ class SensorReadings:
             dielectric / severe contamination).
         partial_discharge_score: Partial-discharge activity (0 = none, 100 =
             continuous / severe PD detected).
-        missing_sensor_ratio: Fraction of the above sensors that are
-            unavailable/offline (0.0 = all present, 1.0 = all missing).
-            Missing sensors inflate the health score because absent data is
-            a risk, not a guarantee of health.
+        load_score: Current load as a fraction of rated capacity, normalised
+            to 0–100 where 100 = fully loaded.  A load_factor_current of 1.0
+            (100% of rated) maps to a score of 100.  This signal reflects
+            instantaneous thermal and mechanical stress from load, separate
+            from the long-run average used in asset_degradation.
+        missing_sensor_ratio: Fraction of the four primary diagnostic sensors
+            (temperature, vibration, oil, PD) that are unavailable/offline.
+            0.0 = all present, 1.0 = all missing.  Missing sensors inflate the
+            health score because absent data is a risk, not a guarantee of
+            health.  load_factor_current is not counted in this ratio because
+            it is a metering channel, not a diagnostic sensor.
     """
 
     temperature_score: float = 0.0        # 0–100
     vibration_score: float = 0.0          # 0–100
     oil_quality_score: float = 0.0        # 0–100
     partial_discharge_score: float = 0.0  # 0–100
+    load_score: float = 0.0               # 0–100  (current load fraction × 100)
     missing_sensor_ratio: float = 0.0     # 0.0–1.0
 
 

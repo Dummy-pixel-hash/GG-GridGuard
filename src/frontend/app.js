@@ -8,11 +8,13 @@ const S = {
   selected: null, sideTab: "overview", currentView: "overview",
   mapZoom: 1,
   filters: { q: "", status: "", region: "", type: "" },
-  chatBooted: false, asking: false,
+  chatBooted: false, asking: false, history: [],
 };
 
-const COLORS = { Healthy: "#34d399", Monitoring: "#fbbf24", High: "#fb923c", Critical: "#f87171" };
-const TYPE_ICON = { transformer: "⚡", substation: "⟁" };
+const COLORS = { Healthy: "#187245", Monitoring: "#8a6a0c", High: "#b45309", Critical: "#b42318" };
+const ICON_TX = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M8.6 2.5v5.4M15.4 2.5v5.4M8.6 18.1v3.4M15.4 18.1v3.4"/><circle cx="8.6" cy="13" r="5.1"/><circle cx="15.4" cy="13" r="5.1"/></svg>`;
+const ICON_SUB = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 5.5h18" stroke-width="2.4"/><path d="M6.5 5.5v4.5M12 5.5v4.5M17.5 5.5v4.5M6.5 13.6V21M12 13.6V21M17.5 13.6V21"/><rect x="4.7" y="10" width="3.6" height="3.6"/><rect x="10.2" y="10" width="3.6" height="3.6"/><rect x="15.7" y="10" width="3.6" height="3.6"/></svg>`;
+const TYPE_ICON = { transformer: ICON_TX, substation: ICON_SUB };
 const POS = {
   "TX-001": [11, 17], "TX-002": [33, 15], "TX-003": [58, 16], "TX-004": [82, 16],
   "TX-005": [22, 46], "TX-006": [50, 40], "TX-007": [76, 52], "TX-008": [40, 71],
@@ -197,15 +199,48 @@ function filtered() {
 
 /* ---------------- KPIs ---------------- */
 function renderKPIs() {
-  const c = S.summary.counts;
-  const kpi = (cls, icon, n, label) =>
-    `<div class="kpi ${cls}"><span class="ico">${icon}</span><span><span class="n">${n}</span><br><span class="l">${label}</span></span></div>`;
+  const list = filtered();
+  const c = { Healthy: 0, Monitoring: 0, High: 0, Critical: 0 };
+  list.forEach((a) => { c[a.status] += 1; });
+  const kpi = (cls, icon, n, label, st) =>
+    `<button type="button" class="kpi ${cls}" data-status="${st}" aria-pressed="${S.filters.status === st}" title="Filter by ${label}"><span class="ico" aria-hidden="true">${icon}</span><span><span class="n">${n}</span><br><span class="l">${label}</span></span></button>`;
   $("kpis").innerHTML =
-    kpi("total", "◔", S.summary.total, "Total Assets") +
-    kpi("healthy", "◉", c.Healthy, "Healthy") +
-    kpi("monitoring", "◉", c.Monitoring, "Monitoring") +
-    kpi("high", "⬢", c.High, "High") +
-    kpi("critical", "⬢", c.Critical, "Critical");
+    kpi("total", "◔", list.length, "Total Assets", "") +
+    kpi("healthy", "◉", c.Healthy, "Healthy", "Healthy") +
+    kpi("monitoring", "◉", c.Monitoring, "Monitoring", "Monitoring") +
+    kpi("high", "⬢", c.High, "High", "High") +
+    kpi("critical", "⬢", c.Critical, "Critical", "Critical");
+  $("kpis").querySelectorAll(".kpi").forEach((b) => b.onclick = () => {
+    S.filters.status = b.dataset.status;
+    $("f-status").value = b.dataset.status;
+    refreshFiltered();
+  });
+}
+
+function filtersActive() {
+  const f = S.filters;
+  return Boolean(f.q || f.status || f.region || f.type);
+}
+
+function renderFilterMeta() {
+  const el = $("filter-meta");
+  if (!el) return;
+  if (!filtersActive()) { el.hidden = true; return; }
+  const n = filtered().length, m = S.assets.length;
+  el.hidden = false;
+  el.innerHTML = `<span>Showing <b>${n}</b> of ${m} assets</span><button type="button" class="linklike" id="filter-clear">Clear filters</button>`;
+  $("filter-clear").onclick = clearFilters;
+}
+
+function clearFilters() {
+  S.filters = { q: "", status: "", region: "", type: "" };
+  $("q").value = ""; $("f-status").value = ""; $("f-region").value = ""; $("f-type").value = "";
+  refreshFiltered();
+}
+
+function refreshFiltered() {
+  renderKPIs(); renderMap(); renderQueue(); renderStrips();
+  renderAssetsTable(); renderFilterMeta();
 }
 
 /* ---------------- network map ---------------- */
@@ -215,29 +250,35 @@ function renderMap() {
   box.innerHTML = "";
   ORDER.filter((id) => S.assets.some((a) => a.id === id)).forEach((id, i) => {
     const a = S.assets.find((x) => x.id === id);
+    if (!vis.has(id)) return;
     const [x, y] = POS[id] || [10 + i * 10, 50];
-    const el = document.createElement("div");
+    const el = document.createElement("button");
+    el.type = "button";
     el.className = `node st-${a.status}` + (a.status === "Critical" ? " pulse" : "") +
-      (S.selected === id ? " selected" : "") + (vis.has(id) ? "" : " dim");
+      (S.selected === id ? " selected" : "");
     el.style.left = x + "%"; el.style.top = y + "%";
     el.style.animationDelay = (i * 0.05) + "s";
     el.title = `${a.id} · ${a.status} · ${a.overall_risk}/100`;
-    el.innerHTML = `<span class="nico">${TYPE_ICON[a.asset_type] || "⚡"}</span>
+    el.setAttribute("aria-label", `${a.id}, ${a.asset_type}, ${a.status}, risk ${a.overall_risk} of 100. Activate to inspect.`);
+    el.setAttribute("aria-pressed", S.selected === id ? "true" : "false");
+    el.innerHTML = `<span class="nico" aria-hidden="true">${TYPE_ICON[a.asset_type] || ICON_TX}</span>
       <span><span class="nid">${esc(a.id)}</span><br><span class="ntype">${esc(cap(a.asset_type))}</span></span>
-      <span class="ndot"></span>`;
+      <span class="nrisk" style="color:${barColor(a.overall_risk)}">${a.overall_risk}</span>
+      <span class="ndot" aria-hidden="true"></span>`;
     el.onclick = () => { S.selected = id; renderMap(); renderSide(); };
     el.ondblclick = () => openModal(id);
     box.appendChild(el);
   });
+  if (!box.children.length) {
+    box.innerHTML = `<div class="map-empty">No assets match the current filters.</div>`;
+  }
   // connection lines
   const svg = $("netlines");
   const pts = ORDER.map((id) => POS[id]);
   svg.setAttribute("viewBox", "0 0 100 100");
   svg.innerHTML = EDGES.filter(([a, b]) => pts[a] && pts[b]).map(([a, b]) => {
-    const A = S.assets.find((x) => x.id === ORDER[a]);
-    const col = A ? COLORS[A.status] : "#31427a";
     return `<line x1="${pts[a][0]}" y1="${pts[a][1]}" x2="${pts[b][0]}" y2="${pts[b][1]}"
-      stroke="${col}" stroke-opacity="0.28" stroke-width="0.35" vector-effect="non-scaling-stroke"/>`;
+      stroke="#8da086" stroke-opacity="0.6" stroke-width="0.35" vector-effect="non-scaling-stroke"/>`;
   }).join("");
 }
 
@@ -251,10 +292,9 @@ function setMapZoom(next) {
 function ringSVG(score) {
   const C = 2 * Math.PI * 44, off = C * (1 - score / 100);
   return `<div class="ring"><svg width="104" height="104" viewBox="0 0 104 104">
-    <circle cx="52" cy="52" r="44" fill="none" stroke="#1a2540" stroke-width="10"/>
+    <circle cx="52" cy="52" r="44" fill="none" stroke="#e3e9f0" stroke-width="10"/>
     <circle cx="52" cy="52" r="44" fill="none" stroke="${barColor(score)}" stroke-width="10"
-      stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"
-      style="filter:drop-shadow(0 0 6px ${barColor(score)})"/></svg>
+      stroke-linecap="round" stroke-dasharray="${C.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}"/></svg>
     <span class="rv"><span><b>${score}</b><br><small>/100</small></span></span></div>`;
 }
 
@@ -313,7 +353,7 @@ function renderSide() {
     </div>`;
   }
   el.innerHTML = `
-    <div class="sp-head"><span class="sp-id-ico">${TYPE_ICON[a.asset_type] || "⚡"}</span>
+    <div class="sp-head"><span class="sp-id-ico" aria-hidden="true">${TYPE_ICON[a.asset_type] || ICON_TX}</span>
       <span class="aid">${esc(a.id)}</span><span class="status-pill ${a.status}">◉ ${riskWord(a)}</span></div>
     <div class="sp-sub">${esc(cap(a.asset_type))} &nbsp;|&nbsp; ${esc(a.substation)} · ${esc(a.region)} Zone</div>
     <div class="sp-tabs">${tabs}</div>${body}
@@ -323,7 +363,7 @@ function renderSide() {
     </div>`;
   el.querySelectorAll(".sp-tabs button").forEach((b) => b.onclick = () => { S.sideTab = b.dataset.t; renderSide(); });
   $("sp-details").onclick = () => openModal(a.id);
-  $("sp-maint").onclick = () => toast(`Work order drafted for ${a.id} — ${a.recommended_action} (demo)`);
+  $("sp-maint").onclick = () => openConfirm(a.id);
 }
 
 const riskWord = (a) => a.status === "Healthy" ? "Healthy" : a.status === "Monitoring" ? "Monitoring" : a.status === "High" ? "High Risk" : "Out of Order";
@@ -343,13 +383,18 @@ const outageEst = (a) => a.status === "Critical" ? "4–8 hours" : a.status === 
 
 /* ---------------- queue + strips ---------------- */
 function renderQueue() {
-  const ranked = [...S.assets].sort((a, b) => b.overall_risk - a.overall_risk);
+  const ranked = [...filtered()].sort((a, b) => b.overall_risk - a.overall_risk);
+  if (!ranked.length) {
+    $("queue").innerHTML = `<div class="queue-empty">No assets match the current filters. <button type="button" class="linklike" id="queue-clear">Clear filters</button></div>`;
+    $("queue-clear").onclick = clearFilters;
+    return;
+  }
   $("queue").innerHTML = ranked.map((a, i) => `
-    <div class="qcard ${a.status}" data-id="${a.id}">
-      <div class="qr"><span>#${i + 1} priority</span><b style="color:${COLORS[a.status]}">${a.overall_risk}</b></div>
-      <div class="qa">${a.id} · ${esc(a.substation)}</div>
-      <div class="qd">${a.status} · ${esc(a.dominant_factor_label)} · ${fmtInt(a.grid_impact.customers_served)} customers</div>
-    </div>`).join("");
+    <button type="button" class="qcard ${a.status}" data-id="${a.id}" aria-label="${a.id}, ${a.substation}, ${a.status}, risk ${a.overall_risk} of 100. Activate to inspect.">
+      <span class="qr"><span>#${i + 1} priority</span><b style="color:${COLORS[a.status]}">${a.overall_risk}</b></span>
+      <span class="qa">${a.id} · ${esc(a.substation)}</span>
+      <span class="qd">${a.status} · ${esc(a.dominant_factor_label)} · ${fmtInt(a.grid_impact.customers_served)} customers</span>
+    </button>`).join("");
   document.querySelectorAll(".qcard").forEach((c) => c.onclick = () => {
     S.selected = c.dataset.id; renderMap(); renderSide();
     document.querySelector(".overview-grid").scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -357,15 +402,23 @@ function renderQueue() {
 }
 
 function renderStrips() {
-  const byPrecip = [...S.assets].sort((a, b) => b.weather_raw.precipitation_mm - a.weather_raw.precipitation_mm)[0];
-  const stormy = S.assets.filter((a) => a.components.weather_risk >= 60);
+  const list = filtered();
+  if (!list.length) {
+    $("weather-card").innerHTML = `<div class="lead"><span class="ico" aria-hidden="true">🌧</span>Upcoming Weather Impact</div>
+      <p>No assets in the current filter selection.</p>`;
+    $("insights-card").innerHTML = `<div class="lead"><span class="ico" aria-hidden="true">✦</span>AI Insights</div>
+      <p>Clear the filters to see fleet insights.</p>`;
+    return;
+  }
+  const byPrecip = [...list].sort((a, b) => b.weather_raw.precipitation_mm - a.weather_raw.precipitation_mm)[0];
+  const stormy = list.filter((a) => a.components.weather_risk >= 60);
   const regions = [...new Set(stormy.map((a) => a.region))];
-  $("weather-card").innerHTML = `<div class="lead"><span class="ico">🌧</span>Upcoming Weather Impact</div>
+  $("weather-card").innerHTML = `<div class="lead"><span class="ico" aria-hidden="true">🌧</span>Upcoming Weather Impact</div>
     <p>Heavy rainfall expected in <b style="color:var(--text)">${esc(byPrecip.region)} Zone</b>
     (${byPrecip.weather_raw.precipitation_mm} mm, wind ${byPrecip.weather_raw.wind_speed_max_kmh} km/h).
     Increases risk for ${stormy.length} nearby asset${stormy.length === 1 ? "" : "s"}.</p>`;
-  const top = [...S.assets].sort((a, b) => b.overall_risk - a.overall_risk)[0];
-  $("insights-card").innerHTML = `<div class="lead"><span class="ico">✦</span>AI Insights <span class="go">›</span></div>
+  const top = [...list].sort((a, b) => b.overall_risk - a.overall_risk)[0];
+  $("insights-card").innerHTML = `<div class="lead"><span class="ico" aria-hidden="true">✦</span>AI Insights <span class="go">›</span></div>
     <p>${stormy.length} asset${stormy.length === 1 ? " shows" : "s show"} elevated risk due to forecasted storms.
     ${top.status === "Critical" || top.status === "High"
       ? `Consider pre-positioning maintenance crews in ${esc(top.region)} Zone — ${top.id} is ${top.status.toLowerCase()} at ${top.overall_risk}/100.`
@@ -374,7 +427,12 @@ function renderStrips() {
 
 /* ---------------- assets table ---------------- */
 function renderAssetsTable() {
-  const rows = [...S.assets].sort((a, b) => b.overall_risk - a.overall_risk);
+  const rows = [...filtered()].sort((a, b) => b.overall_risk - a.overall_risk);
+  if (!rows.length) {
+    $("assets-tbody").innerHTML = `<tr><td colspan="9" class="empty-cell">No assets match the current filters. <button type="button" class="linklike" id="assets-clear">Clear filters</button></td></tr>`;
+    $("assets-clear").onclick = clearFilters;
+    return;
+  }
   $("assets-tbody").innerHTML = rows.map((a) => `<tr data-id="${a.id}">
     <td><b>${a.id}</b><br><small style="color:var(--faint)">${esc(cap(a.asset_type))}</small></td>
     <td>${esc(a.substation)}</td><td>${esc(a.region)}</td>
@@ -430,23 +488,17 @@ function openModal(id) {
        ${a.lineage.successor_of_retired ? `Successor of retired <b>${esc(a.lineage.successor_of_retired.asset_id)}</b>.` : ""}</p>`
     : `<p style="font-size:12.5px;color:var(--muted);margin:6px 0 0">Original unit — no replacement lineage.</p>`;
   $("modal-body").innerHTML = `
-    <div class="m-head"><span style="font-size:26px">${TYPE_ICON[a.asset_type] || "⚡"}</span>
+    <div class="m-head"><span class="m-id-ico" aria-hidden="true">${TYPE_ICON[a.asset_type] || ICON_TX}</span>
       <h2>${a.id}</h2><span class="status-pill ${a.status}">${riskWord(a)} · ${a.overall_risk}/100</span></div>
     <div class="m-sub">${esc(cap(a.asset_type))} · ${esc(a.substation)} · ${esc(a.region)} Zone · commissioned ${a.commissioned_year} · ${(a.rated_kva / 1000).toFixed(0)} MVA · ${a.rated_voltage_kv} kV</div>
     <div class="m-grid">
       <div class="m-card full"><h4>Why ${a.id} is ${a.status} — risk breakdown (weights sum to 1.0)</h4>${fbars}
         <div class="why-box">Primary driver: <b>${esc(a.dominant_factor_label)}</b>. ${esc(alertText(a))}</div></div>
-      <div class="m-card"><h4>Sensor evidence</h4>${kv([
-        ["Top-oil temp", `${s.top_oil_temp_c} °C`], ["Hot-spot", `${s.winding_hot_spot_c} °C`],
-        ["Vibration", `${s.vibration_mm_s} mm/s`], ["Oil dielectric", `${s.oil_dielectric_kv} kV`],
-        ["Partial discharge", `${fmtInt(s.partial_discharge_pc)} pC`], ["Load now", `${Math.round(s.load_factor_current * 100)}%`],
-      ])}</div>
-      <div class="m-card"><h4>Weather exposure (72 h)</h4>${kv([
-        ["Max / min", `${a.weather_raw.max_temp_c} / ${a.weather_raw.min_temp_c} °C`],
-        ["Precipitation", `${a.weather_raw.precipitation_mm} mm`], ["Max wind", `${a.weather_raw.wind_speed_max_kmh} km/h`],
-        ["Storm level", `${a.weather_raw.storm_warning_level} / 3`],
-        ["Weather score", `${a.components.weather_risk}/100`],
-      ])}</div>
+      <div class="m-card"><h4>Grid impact</h4>${kv([
+        ["Customers", fmtInt(gi.customers_served)], ["Critical facilities", gi.critical_facility_count],
+        ["Peak load", `${gi.peak_load_mw} MW`], ["Downstream assets", gi.downstream_asset_count],
+        ["Redundancy", gi.has_redundant_path ? "N-1 ✓" : "NONE"],
+      ])}${gi.critical_facility_names.length ? `<p style="font-size:12px;color:var(--muted)">▣ ${gi.critical_facility_names.map(esc).join(" · ")}</p>` : ""}</div>
       <div class="m-card"><h4>Failure history</h4>${kv([
         ["Failures (5 yr)", h.failure_count_last_5yr], ["Weather-caused", h.failures_caused_by_weather],
         ["Last failure", h.last_failure_days_ago == null ? "never" : h.last_failure_days_ago + " days ago"],
@@ -458,11 +510,17 @@ function openModal(id) {
         ["Remaining life", `${lc.remaining_life_years} yr`], ["Insulation", d.insulation_health_pct == null ? "—" : d.insulation_health_pct + "%"],
         ["Fault events", d.cumulative_fault_events], ["Maint. overdue", `${d.maintenance_overdue_days} days`],
       ])}</div>
-      <div class="m-card"><h4>Grid impact</h4>${kv([
-        ["Customers", fmtInt(gi.customers_served)], ["Critical facilities", gi.critical_facility_count],
-        ["Peak load", `${gi.peak_load_mw} MW`], ["Downstream assets", gi.downstream_asset_count],
-        ["Redundancy", gi.has_redundant_path ? "N-1 ✓" : "NONE"],
-      ])}${gi.critical_facility_names.length ? `<p style="font-size:12px;color:var(--muted)">▣ ${gi.critical_facility_names.map(esc).join(" · ")}</p>` : ""}</div>
+      <details class="m-card"><summary><span>Sensor evidence</span><span class="sum-val">Hot-spot ${s.winding_hot_spot_c} °C</span></summary>${kv([
+        ["Top-oil temp", `${s.top_oil_temp_c} °C`], ["Hot-spot", `${s.winding_hot_spot_c} °C`],
+        ["Vibration", `${s.vibration_mm_s} mm/s`], ["Oil dielectric", `${s.oil_dielectric_kv} kV`],
+        ["Partial discharge", `${fmtInt(s.partial_discharge_pc)} pC`], ["Load now", `${Math.round(s.load_factor_current * 100)}%`],
+      ])}</details>
+      <details class="m-card"><summary><span>Weather exposure (72 h)</span><span class="sum-val">Storm ${a.weather_raw.storm_warning_level}/3 · ${a.weather_raw.precipitation_mm} mm</span></summary>${kv([
+        ["Max / min", `${a.weather_raw.max_temp_c} / ${a.weather_raw.min_temp_c} °C`],
+        ["Precipitation", `${a.weather_raw.precipitation_mm} mm`], ["Max wind", `${a.weather_raw.wind_speed_max_kmh} km/h`],
+        ["Storm level", `${a.weather_raw.storm_warning_level} / 3`],
+        ["Weather score", `${a.components.weather_risk}/100`],
+      ])}</details>
       <div class="m-card"><h4>Maintenance & fault log</h4><div>${mh}</div><div style="margin-top:6px">${fh}</div>
         ${lineage}</div>
     </div>
@@ -472,9 +530,58 @@ function openModal(id) {
     </div>`;
   $("modal-backdrop").classList.remove("hidden");
   $("m-ask").onclick = () => { closeModal(); gotoAI(`Why is ${a.id} ${a.status.toLowerCase()}?`, a.id); };
-  $("m-maint").onclick = () => toast(`Work order drafted for ${a.id} — ${a.recommended_action} (demo)`);
+  $("m-maint").onclick = () => openConfirm(a.id);
+  S._lastFocus = document.activeElement;
+  const closeBtn = $("modal-close");
+  if (closeBtn) closeBtn.focus();
 }
-function closeModal() { $("modal-backdrop").classList.add("hidden"); }
+function trapTab(e, container) {
+  if (e.key !== "Tab" || !container) return;
+  const f = container.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  const vis = [...f].filter((el) => !el.disabled && el.offsetParent !== null);
+  if (!vis.length) return;
+  const first = vis[0], last = vis[vis.length - 1];
+  if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
+function closeModal() {
+  $("modal-backdrop").classList.add("hidden");
+  if (S._lastFocus && S._lastFocus.focus) { try { S._lastFocus.focus(); } catch (e) {} S._lastFocus = null; }
+}
+
+/* Confirm step before drafting a work order: shows the three facts that
+   matter (status/risk, customers, redundancy) with a cancel path. */
+function openConfirm(id) {
+  const a = S.assets.find((x) => x.id === id);
+  if (!a) return;
+  const gi = a.grid_impact;
+  $("confirm-body").innerHTML = `
+    <h2 id="confirm-title">Schedule maintenance</h2>
+    <div class="m-sub">${esc(a.id)} · ${esc(a.substation)} · ${esc(a.region)} Zone</div>
+    <div class="confirm-facts">
+      <div class="sr"><span>Status</span><span class="val">${a.status} · ${a.overall_risk}/100</span></div>
+      <div class="sr"><span>Customers affected</span><span class="val">~${fmtInt(gi.customers_served)}</span></div>
+      <div class="sr"><span>Redundancy</span><span class="val">${gi.has_redundant_path ? "N-1 redundant" : "NONE"}</span></div>
+      <div class="sr"><span>Action</span><span class="val">${esc(a.recommended_action)}</span></div>
+    </div>
+    <p class="confirm-note">Demo build — drafting only, nothing is dispatched.</p>
+    <div class="confirm-actions">
+      <button type="button" class="btn ghost" id="confirm-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="confirm-ok">Draft work order</button>
+    </div>`;
+  $("confirm-backdrop").classList.remove("hidden");
+  S._lastConfirmFocus = document.activeElement;
+  $("confirm-cancel").onclick = closeConfirm;
+  $("confirm-ok").onclick = () => {
+    closeConfirm();
+    toast(`Work order drafted for ${a.id} — ${a.recommended_action} (demo)`);
+  };
+  $("confirm-cancel").focus();
+}
+function closeConfirm() {
+  $("confirm-backdrop").classList.add("hidden");
+  if (S._lastConfirmFocus && S._lastConfirmFocus.focus) { try { S._lastConfirmFocus.focus(); } catch (e) {} S._lastConfirmFocus = null; }
+}
 
 function openHelp(kind) {
   const guides = {
@@ -482,7 +589,7 @@ function openHelp(kind) {
       eyebrow: "GRID STATUS",
       title: "Read the network at a glance",
       lead: "Use this view to spot risk, inspect an asset, and understand where operational attention is needed.",
-      steps: [["Filter the fleet", "Search by asset ID, status, region, or asset type. The map and attention queue update together."], ["Read the health scale", "Green means healthy, yellow means monitoring, orange means high risk, and red means critical."], ["Inspect a node", "Select a transformer or substation for live details. Double-click it for the full asset record."], ["Navigate the map", "Use +, minus, Reset, or your mouse wheel to zoom into the network."], ["Move to action", "Use the Maintenance view when an asset needs a ranked response plan."]]
+      steps: [["Filter the fleet", "Search by asset ID, status, region, or asset type. The map and attention queue update together."], ["Read the health scale", "Green means healthy, yellow means monitoring, orange means high risk, and red means critical."], ["Inspect a node", "Activate a transformer or substation (Enter) for live details. Double-click it for the full asset record."], ["Navigate the map", "Use +, minus, Reset, or your mouse wheel to zoom into the network."], ["Move to action", "Use the Maintenance view when an asset needs a ranked response plan."]]
     },
     assets: {
       eyebrow: "ASSET REGISTER",
@@ -515,8 +622,14 @@ function openHelp(kind) {
     <ol class="help-steps">${guide.steps.map(([title, text]) => `<li><b>${title}</b><span>${text}</span></li>`).join("")}</ol>`;
   $("help-body").innerHTML = content;
   $("help-backdrop").classList.remove("hidden");
+  S._lastHelpFocus = document.activeElement;
+  const hc = $("help-close");
+  if (hc) hc.focus();
 }
-function closeHelp() { $("help-backdrop").classList.add("hidden"); }
+function closeHelp() {
+  $("help-backdrop").classList.add("hidden");
+  if (S._lastHelpFocus && S._lastHelpFocus.focus) { try { S._lastHelpFocus.focus(); } catch (e) {} S._lastHelpFocus = null; }
+}
 
 /* ---------------- AI ---------------- */
 const SUGGESTIONS = [
@@ -525,60 +638,239 @@ const SUGGESTIONS = [
   "What factors are driving TX-008's risk?",
   "Should we inspect TX-005 this week?",
 ];
+
+/* Safe lightweight markdown renderer (no dependencies, XSS-safe).
+   Escapes HTML first, then emits only our own allowlisted tags. */
+function renderMarkdown(src) {
+  const text = String(src == null ? "" : src);
+  // 1. Extract fenced code blocks so inner markdown is not processed.
+  const codeBlocks = [];
+  let work = text.replace(/```(\w*)\n?([\s\S]*?)```/g, (m, lang, code) => {
+    codeBlocks.push(`<pre><code>${esc(code.replace(/\n$/, ""))}</code></pre>`);
+    return `\u0000CODE${codeBlocks.length - 1}\u0000`;
+  });
+  const lines = work.split("\n");
+  let html = "";
+  let inUL = false, inOL = false;
+  const closeLists = () => {
+    if (inUL) { html += "</ul>"; inUL = false; }
+    if (inOL) { html += "</ol>"; inOL = false; }
+  };
+  const inline = (s) => {
+    let o = esc(s);
+    // inline code
+    o = o.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // bold + italic
+    o = o.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    o = o.replace(/(^|\W)\*([^*\n]+)\*/g, "$1<em>$2</em>");
+    // asset IDs become detail buttons (TX-001 style)
+    o = o.replace(/\bTX-?(\d{3})\b/g, (m) => {
+      const id = m.replace("TX", "TX-").replace("TX--", "TX-").toUpperCase();
+      const norm = /^TX-\d{3}$/.test(id) ? id : m.toUpperCase();
+      return `<button type="button" class="asset-link" data-open-asset="${esc(norm)}">${esc(m)}</button>`;
+    });
+    return o;
+  };
+  const isTableRow = (l) => /^\s*\|.*\|\s*$/.test(l);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+    if (!t) { closeLists(); continue; }
+    if (t.includes("\u0000CODE")) { closeLists(); html += t; continue; }
+    // markdown table
+    if (isTableRow(line)) {
+      const rows = [];
+      while (i < lines.length && isTableRow(lines[i])) { rows.push(lines[i]); i++; }
+      i--;
+      const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+      const isSep = (r) => /^[\s|:|-]+$/.test(r) && r.includes("-");
+      let start = 0, header = null;
+      if (rows.length > 1 && isSep(rows[1])) { header = cells(rows[0]); start = 2; }
+      html += `<div class="md-table-wrap"><table class="md-table">`;
+      if (header) html += `<thead><tr>${header.map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead>`;
+      html += "<tbody>";
+      for (let k = start; k < rows.length; k++) {
+        if (isSep(rows[k])) continue;
+        html += `<tr>${cells(rows[k]).map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`;
+      }
+      html += "</tbody></table></div>";
+      closeLists();
+      continue;
+    }
+    // headings
+    const h = t.match(/^(#{1,4})\s+(.*)/);
+    if (h) {
+      closeLists();
+      const lvl = Math.min(4, h[1].length);
+      html += `<h${lvl + 1} class="md-h">${inline(h[2])}</h${lvl + 1}>`;
+      continue;
+    }
+    // horizontal rule
+    if (/^(-{3,}|\*{3,})$/.test(t)) { closeLists(); html += "<hr class='md-hr'>"; continue; }
+    // blockquote
+    if (/^&gt;/.test(esc(t)) || /^>/.test(t)) {
+      closeLists();
+      html += `<blockquote class="md-quote">${inline(t.replace(/^>\s?/, ""))}</blockquote>`;
+      continue;
+    }
+    // unordered list
+    let m = t.match(/^([-*•])\s+(.*)/);
+    if (m) {
+      if (inOL) { html += "</ol>"; inOL = false; }
+      if (!inUL) { html += `<ul class="md-ul">`; inUL = true; }
+      html += `<li>${inline(m[2])}</li>`;
+      continue;
+    }
+    // ordered list
+    m = t.match(/^(\d+)[.)]\s+(.*)/);
+    if (m) {
+      if (inUL) { html += "</ul>"; inUL = false; }
+      if (!inOL) { html += `<ol class="md-ol">`; inOL = true; }
+      html += `<li>${inline(m[2])}</li>`;
+      continue;
+    }
+    closeLists();
+    html += `<p class="md-p">${inline(t)}</p>`;
+  }
+  closeLists();
+  // restore code blocks
+  html = html.replace(/\u0000CODE(\d+)\u0000/g, (mm, n) => codeBlocks[Number(n)] || "");
+  return html || `<p class="md-p">—</p>`;
+}
+
+function timeNow() {
+  return new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+}
+
 function renderAIContext() {
-  const id = $("ai-asset").value;
+  const sel = $("ai-asset");
+  const id = sel ? sel.value : "";
   const a = S.assets.find((x) => x.id === id);
   const list = a ? [a] : [...S.assets].sort((x, y) => y.overall_risk - x.overall_risk).slice(0, 4);
-  $("ai-context").innerHTML = `<h3>${a ? esc(a.id) + " — live scores" : "Fleet context — live scores"}</h3>` +
-    list.map((x) => `<div class="factor-row"><span><b>${x.id}</b> · ${x.status}</span>
-      <span style="font-family:var(--mono)">${x.overall_risk}</span>
+  const card = (x) => {
+    const sub = S.assets.find((y) => y.id === x.id) || x;
+    return `<div class="ctx-card">
+      <div class="ctx-top"><button type="button" class="asset-link strong" data-open-asset="${esc(x.id)}">${esc(x.id)}</button>
+        <span class="status-pill ${x.status}">${x.status}</span>
+        <span class="ctx-risk" style="color:${barColor(x.overall_risk)}">${x.overall_risk}</span></div>
       <span class="bar"><i style="width:${x.overall_risk}%;background:${barColor(x.overall_risk)}"></i></span>
-      <small>${esc(x.dominant_factor_label)} ${x.components[x.dominant_factor]}/100 · ${fmtInt(x.grid_impact.customers_served)} customers</small></div>`).join("") +
-    `<p style="color:var(--faint);font-size:11.5px;margin:10px 0 0">Answers are generated from these exact scores via the backend briefing service.</p>`;
+      <small>${esc(x.dominant_factor_label)} ${x.components[x.dominant_factor]}/100 · ${fmtInt(x.grid_impact.customers_served)} customers · ${esc(sub.substation || "")}</small>
+    </div>`;
+  };
+  $("ai-context").innerHTML =
+    `<div class="ctx-head"><h3>${a ? esc(a.id) + " — live scores" : "Fleet context — live scores"}</h3>
+     <span class="ctx-live"><i></i>live engine</span></div>` +
+    list.map(card).join("") +
+    `<p class="ctx-note">Answers are generated from these exact scores via the backend briefing service. Select an asset to scope questions.</p>`;
+  bindAssetLinks($("ai-context"));
+  const badge = $("chat-ctx-badge");
+  if (badge) badge.textContent = a ? `${a.id} · ${a.status} · ${a.overall_risk}/100` : `Fleet-wide · top ${list.length} by risk`;
 }
+
+function bindAssetLinks(root) {
+  if (!root) return;
+  root.querySelectorAll("[data-open-asset]").forEach((b) => {
+    b.onclick = (e) => { e.stopPropagation(); openModal(b.dataset.openAsset); };
+  });
+}
+
 function bootChat() {
   if (S.chatBooted) return;
   S.chatBooted = true;
   $("suggestions").innerHTML = SUGGESTIONS.map((s) => `<button class="sug" type="button">${esc(s)}</button>`).join("");
   document.querySelectorAll(".sug").forEach((b) => b.onclick = () => ask(b.textContent, $("ai-asset").value || null));
-  aiSay("Guard AI is online. I explain live risk-engine results — pick an asset context or ask fleet-wide. Try a suggestion below.", [], {});
+  aiSay("**Guard AI is online.** I explain live risk-engine results — no invented numbers.\n\n- Pick an **asset context** on the right, or stay **Fleet-wide**\n- Ask e.g. `Why is TX-007 critical?`\n- Every answer cites the engine scores it used", [], {}, { welcome: true });
+  const clear = $("chat-clear");
+  if (clear) clear.onclick = clearChat;
 }
-function aiSay(text, assetIds, risks) {
+
+function aiSay(text, assetIds, risks, opts) {
+  opts = opts || {};
   const chips = (assetIds || []).map((id) =>
-    `<span class="score-chip">${esc(id)}${risks && risks[id] != null ? " · " + risks[id] : ""}</span>`).join("");
+    `<button type="button" class="score-chip clickable" data-open-asset="${esc(id)}" title="Open ${esc(id)} details">${esc(id)}${risks && risks[id] != null ? " · " + risks[id] : ""}</button>`).join("");
   const div = document.createElement("div");
-  div.className = "msg ai";
-  div.innerHTML = `${esc(text).replace(/\n/g, "<br>")}
-    <div class="meta">${chips}<span class="score-chip" title="All figures come from the deterministic risk engine">grounded ✓ · ${(S.briefing && S.briefing.provider) || "mock"}</span></div>`;
+  div.className = "msg ai" + (opts.error ? " msg-error" : "") + (opts.welcome ? " msg-welcome" : "");
+  const provider = (S.briefing && S.briefing.provider) || "mock";
+  const body = opts.plain ? `<p class="md-p">${esc(text)}</p>` : renderMarkdown(text);
+  div.innerHTML = `
+    <div class="msg-head"><span class="msg-who">Guard AI</span>
+      <span class="msg-time">${timeNow()}</span>
+      <button type="button" class="copy-btn" title="Copy answer">Copy</button></div>
+    <div class="msg-body">${body}</div>
+    <div class="meta">${chips}<span class="score-chip static" title="All figures come from the deterministic risk engine">grounded · ${esc(provider)}</span></div>`;
+  const copy = div.querySelector(".copy-btn");
+  if (copy) copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(text); copy.textContent = "Copied"; }
+    catch (e) { copy.textContent = "Copy failed"; }
+    setTimeout(() => { copy.textContent = "Copy"; }, 1400);
+  };
+  bindAssetLinks(div);
+  $("chat").appendChild(div);
+  $("chat").scrollTop = $("chat").scrollHeight;
+  return div;
+}
+
+function userSay(text) {
+  const div = document.createElement("div");
+  div.className = "msg user";
+  div.innerHTML = `<div class="msg-head"><span class="msg-who">You</span><span class="msg-time">${timeNow()}</span></div>
+    <div class="msg-body"><p class="md-p">${esc(text)}</p></div>`;
   $("chat").appendChild(div);
   $("chat").scrollTop = $("chat").scrollHeight;
 }
+
+function clearChat() {
+  S.history = [];
+  $("chat").innerHTML = "";
+  aiSay("Conversation cleared. Ask a follow-up — I keep turn-by-turn context until you clear again.", [], {});
+  toast("Guard AI conversation cleared");
+}
+
 async function ask(question, assetId) {
-  if (S.asking || !question.trim()) return;
+  const q = String(question == null ? "" : question).trim();
+  if (S.asking || !q) return;
   S.asking = true;
-  const u = document.createElement("div");
-  u.className = "msg user"; u.textContent = question;
-  $("chat").appendChild(u);
+  const input = $("chat-input");
+  const btn = document.querySelector("#chat-form button[type=submit]");
+  if (input) input.disabled = true;
+  if (btn) btn.disabled = true;
+  // context divider when the operator scoped to a new asset mid-thread
+  const lastCtx = S._lastCtx || "";
+  if ((assetId || "") !== lastCtx && S.history.length) {
+    const d = document.createElement("div");
+    d.className = "ctx-divider";
+    d.textContent = assetId ? `Context → ${assetId}` : "Context → Fleet-wide";
+    $("chat").appendChild(d);
+  }
+  S._lastCtx = assetId || "";
+  userSay(q);
   const t = document.createElement("div");
-  t.className = "msg ai"; t.innerHTML = `<span class="typing">Consulting risk engine…</span>`;
+  t.className = "msg ai msg-typing";
+  t.setAttribute("role", "status");
+  t.innerHTML = `<div class="msg-head"><span class="msg-who">Guard AI</span></div>
+    <div class="typing-row"><span></span><span></span><span></span><em>Consulting risk engine…</em></div>`;
   $("chat").appendChild(t);
   $("chat").scrollTop = $("chat").scrollHeight;
   try {
     const r = await api("/api/briefing", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, asset_id: assetId }),
+      body: JSON.stringify({ question: q, asset_id: assetId, history: S.history.slice(-12) }),
     });
     t.remove();
     aiSay(r.text, r.asset_ids, r.overall_risks);
+    S.history.push({ role: "user", content: q }, { role: "assistant", content: r.text });
+    if (S.history.length > 24) S.history = S.history.slice(-24);
     if (r.notice && !S._noticeShown) {
       S._noticeShown = true;
       toast(r.notice);
     }
   } catch (e) {
     t.remove();
-    aiSay("The briefing service is unreachable. Check the backend and try again.", [], {});
+    aiSay("The briefing service is unreachable. Check the backend (`python3 run_ui.py`) and try again.", [], {}, { error: true });
   }
   S.asking = false;
+  if (input) { input.disabled = false; input.focus(); }
+  if (btn) btn.disabled = false;
 }
 function gotoAI(prefill, assetId) {
   switchView("ai");
@@ -589,7 +881,12 @@ function gotoAI(prefill, assetId) {
 /* ---------------- chrome ---------------- */
 function switchView(name) {
   S.currentView = name;
-  document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
+  document.querySelectorAll(".tab").forEach((t) => {
+    const on = t.dataset.view === name;
+    t.classList.toggle("active", on);
+    if (on) t.setAttribute("aria-current", "page");
+    else t.removeAttribute("aria-current");
+  });
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "ai") { bootChat(); renderAIContext(); }
 }
@@ -603,17 +900,20 @@ function badge() {
   if (tip.length) b.title = tip.join("\n");
 }
 function startClock() {
-  const tick = () => { $("live-clock").textContent = new Date().toLocaleTimeString("en-GB"); };
-  tick(); setInterval(tick, 1000);
+  const tick = () => { $("live-clock").textContent = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" }); };
+  tick(); setInterval(tick, 15000);
 }
 function renderAll() {
   renderKPIs(); renderMap(); renderSide(); renderQueue(); renderStrips();
-  renderAssetsTable(); renderPlan();
+  renderAssetsTable(); renderPlan(); renderFilterMeta();
+  if (S.briefing && S.briefing.offline) $("offline-banner").hidden = false;
+  $("offline-dismiss").onclick = () => { $("offline-banner").hidden = true; };
   document.querySelectorAll(".tab").forEach((t) => t.onclick = () => switchView(t.dataset.view));
-  $("q").oninput = (e) => { S.filters.q = e.target.value.toLowerCase(); renderMap(); };
-  $("f-status").onchange = (e) => { S.filters.status = e.target.value; renderMap(); };
-  $("f-region").onchange = (e) => { S.filters.region = e.target.value; renderMap(); };
-  $("f-type").onchange = (e) => { S.filters.type = e.target.value; renderMap(); };
+  $("brand-home").onclick = () => switchView("overview");
+  $("q").oninput = (e) => { S.filters.q = e.target.value.toLowerCase(); refreshFiltered(); };
+  $("f-status").onchange = (e) => { S.filters.status = e.target.value; refreshFiltered(); };
+  $("f-region").onchange = (e) => { S.filters.region = e.target.value; refreshFiltered(); };
+  $("f-type").onchange = (e) => { S.filters.type = e.target.value; refreshFiltered(); };
   $("map-zoom-in").onclick = () => setMapZoom(S.mapZoom + 0.1);
   $("map-zoom-out").onclick = () => setMapZoom(S.mapZoom - 0.1);
   $("map-zoom-reset").onclick = () => setMapZoom(1);
@@ -638,6 +938,10 @@ function renderAll() {
   };
   $("modal-close").onclick = closeModal;
   $("modal-backdrop").onclick = (e) => { if (e.target.id === "modal-backdrop") closeModal(); };
+  $("modal-backdrop").addEventListener("keydown", (e) => trapTab(e, document.querySelector("#modal-backdrop .modal")));
+  $("help-backdrop").addEventListener("keydown", (e) => trapTab(e, document.querySelector("#help-backdrop .modal")));
+  $("confirm-backdrop").onclick = (e) => { if (e.target.id === "confirm-backdrop") closeConfirm(); };
+  $("confirm-backdrop").addEventListener("keydown", (e) => trapTab(e, document.querySelector("#confirm-backdrop .modal")));
   $("help-trigger").onclick = () => {
     const menu = $("help-dropdown");
     menu.hidden = !menu.hidden;
@@ -653,7 +957,7 @@ function renderAll() {
   document.addEventListener("click", (e) => {
     if (!e.target.closest(".help-menu")) { $("help-dropdown").hidden = true; $("help-trigger").setAttribute("aria-expanded", "false"); }
   });
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); closeHelp(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); closeHelp(); closeConfirm(); } });
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -259,6 +259,42 @@ class TestSensorNormalisation:
 
         assert tight_ri.sensors.temperature_score > default_ri.sensors.temperature_score
 
+    def test_load_score_populated_from_load_factor_current(self):
+        """load_factor_current should map to load_score (0–100)."""
+        r = _minimal_record()
+        r.telemetry.load_factor_current = 0.75
+        ri = normalise(r)
+        assert ri.sensors.load_score == pytest.approx(75.0)
+
+    def test_load_score_at_full_load_is_100(self):
+        r = _minimal_record()
+        r.telemetry.load_factor_current = 1.0
+        ri = normalise(r)
+        assert ri.sensors.load_score == pytest.approx(100.0)
+
+    def test_load_score_none_defaults_to_zero(self):
+        """A missing load meter should not produce a penalty (not a diagnostic sensor)."""
+        r = _minimal_record()
+        r.telemetry.load_factor_current = None
+        ri = normalise(r)
+        assert ri.sensors.load_score == 0.0
+        assert ri.sensors.missing_sensor_ratio == 0.0  # load NOT counted in missing ratio
+
+    def test_load_missing_does_not_affect_missing_sensor_ratio(self):
+        """load_factor_current is a metering channel, not counted in diagnostic missing ratio."""
+        r = _minimal_record()
+        r.telemetry = RawSensorTelemetry(
+            top_oil_temp_c=55.0,  # only diagnostic sensors present
+            winding_hot_spot_c=None,
+            vibration_mm_s=None,
+            oil_dielectric_kv=None,
+            partial_discharge_pc=None,
+            load_factor_current=None,  # missing but shouldn't add to ratio
+        )
+        ri = normalise(r)
+        # Only temp is present among diagnostics → 3 of 4 missing
+        assert ri.sensors.missing_sensor_ratio == pytest.approx(3 / 4)
+
 
 # ===========================================================================
 # 3. Weather normalisation
@@ -268,10 +304,10 @@ class TestWeatherNormalisation:
 
     def test_calm_conditions_score_zero(self):
         r = _minimal_record()
-        # min_temp must be AT or above the neutral threshold (25 °C) to avoid
-        # cold-stress; max_temp AT the neutral threshold to avoid heat stress.
+        # Cold-stress neutral is 0 °C (not 25 °C), so a mild 10 °C night
+        # is correctly stress-free.  max_temp at 25 °C avoids heat stress.
         r.weather = RawWeatherObservation(
-            max_temp_c=25.0, min_temp_c=25.0,
+            max_temp_c=25.0, min_temp_c=10.0,
             precipitation_mm=0.0, wind_speed_max_kmh=0.0,
             storm_warning_level=0,
         )
@@ -279,6 +315,39 @@ class TestWeatherNormalisation:
         assert ri.weather.temperature_stress_score == 0.0
         assert ri.weather.precipitation_score == 0.0
         assert ri.weather.wind_storm_score == 0.0
+
+    def test_mild_negative_temp_produces_no_cold_stress_at_exactly_neutral(self):
+        """0 °C is the cold-stress neutral — no cold stress at that exact point."""
+        r = _minimal_record()
+        r.weather = RawWeatherObservation(
+            max_temp_c=20.0, min_temp_c=0.0,
+            precipitation_mm=0.0, wind_speed_max_kmh=0.0,
+            storm_warning_level=0,
+        )
+        ri = normalise(r)
+        assert ri.weather.temperature_stress_score == pytest.approx(0.0)
+
+    def test_mild_winter_10c_has_zero_cold_stress(self):
+        """10 °C was incorrectly producing cold stress with the old 25 °C neutral."""
+        r = _minimal_record()
+        r.weather = RawWeatherObservation(
+            max_temp_c=15.0, min_temp_c=10.0,
+            precipitation_mm=0.0, wind_speed_max_kmh=0.0,
+            storm_warning_level=0,
+        )
+        ri = normalise(r)
+        assert ri.weather.temperature_stress_score == 0.0
+
+    def test_cold_stress_linear_between_neutral_and_alarm(self):
+        """At -7.5 °C (halfway between 0 °C and -15 °C) stress should be ~50."""
+        r = _minimal_record()
+        r.weather = RawWeatherObservation(
+            max_temp_c=5.0, min_temp_c=-7.5,
+            precipitation_mm=0.0, wind_speed_max_kmh=0.0,
+            storm_warning_level=0,
+        )
+        ri = normalise(r)
+        assert ri.weather.temperature_stress_score == pytest.approx(50.0)
 
     def test_extreme_heat_scores_100(self):
         r = _minimal_record()

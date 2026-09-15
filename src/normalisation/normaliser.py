@@ -120,7 +120,9 @@ def _normalise_sensors(
     for the temperature score so that a missing hot-spot sensor falls back
     to top-oil gracefully without masking risk.
 
-    Missing sensors contribute to ``missing_sensor_ratio`` (4 sensors total).
+    Missing sensors contribute to ``missing_sensor_ratio`` (4 primary diagnostic
+    sensors: temperature, vibration, oil, PD).  ``load_factor_current`` is a
+    metering channel and is not counted in missing_sensor_ratio.
     """
     # --- Temperature score: worst of the two temperature sensors available ---
     temp_scores: list[float] = []
@@ -168,9 +170,18 @@ def _normalise_sensors(
             thresholds.pd_alarm_pc,
         )
 
+    # --- Current load score ---
+    # load_factor_current ∈ [0, 1]; a fully loaded asset (1.0) scores 100.
+    # None (meter offline) is treated as 0.0 — no load penalty when unknown,
+    # as load is a metering channel not a diagnostic alarm.
+    load_score: float = 0.0
+    if telemetry.load_factor_current is not None:
+        load_score = _clamp(telemetry.load_factor_current * 100.0)
+
     # --- Missing sensor ratio ---
-    # The four "primary" sensor channels are: temperature, vibration, oil, PD.
+    # The four "primary" diagnostic channels are: temperature, vibration, oil, PD.
     # Temperature counts as missing only if *both* temperature sensors are missing.
+    # load_factor_current is NOT counted here (metering, not diagnostics).
     n_missing = _count_missing(temperature_score, vibration_score, oil_score, pd_score)
     missing_ratio = n_missing / 4.0
 
@@ -179,6 +190,7 @@ def _normalise_sensors(
         vibration_score=vibration_score if vibration_score is not None else 0.0,
         oil_quality_score=oil_score if oil_score is not None else 0.0,
         partial_discharge_score=pd_score if pd_score is not None else 0.0,
+        load_score=load_score,
         missing_sensor_ratio=missing_ratio,
     )
 
@@ -212,12 +224,13 @@ def _normalise_weather(
         thresholds.temp_alarm_c,
     )
 
-    # Cold stress: min_temp_c below cold alarm (inverted direction)
+    # Cold stress: min_temp_c below the cold-neutral threshold (0 °C).
+    # Temperatures between 0 °C and 25 °C are neither heat- nor cold-stressed.
     cold_stress = 0.0
-    if obs.min_temp_c < thresholds.temp_neutral_c:
+    if obs.min_temp_c < thresholds.temp_cold_neutral_c:
         cold_stress = _linear_score(
             obs.min_temp_c,
-            thresholds.temp_neutral_c,
+            thresholds.temp_cold_neutral_c,
             thresholds.temp_cold_alarm_c,
             inverted=True,
         )

@@ -70,10 +70,15 @@ class WeatherThresholds:
 
     Temperature stress
     ------------------
-    Transformers operate in a ~(-10 °C, +40 °C) ambient range without
-    significant stress; outside that the thermal model changes.  We use the
-    max forecast temperature to approximate summer heat stress, and map it
-    from 25 °C (neutral) → 45 °C (extreme heat alarm).
+    Heat stress: max_temp_c is mapped linearly from temp_neutral_c (25 °C, no
+    stress) → temp_alarm_c (45 °C, full alarm).  Temperatures below 25 °C
+    produce zero heat stress.
+
+    Cold stress: min_temp_c is mapped linearly from temp_cold_neutral_c (0 °C,
+    no stress) → temp_cold_alarm_c (-15 °C, full alarm).  The neutral point
+    for cold is 0 °C — temperatures between 0 °C and 25 °C are neither heat-
+    nor cold-stressed.  Previously this was incorrectly set to 25 °C, meaning
+    any temperature below 25 °C produced spurious cold stress.
 
     Precipitation
     -------------
@@ -85,20 +90,26 @@ class WeatherThresholds:
     0 km/h → 0; 120 km/h → alarm (structural risk; Beaufort 12 hurricane starts
     at ~118 km/h).
 
-    Storm warning level (0–3) adds a direct boost:
+    Storm warning level (0–3) adds a direct boost on top of the raw wind score.
+    This represents meteorologist-assessed certainty of a severe event that the
+    instantaneous wind-speed number alone may not yet capture (e.g. a developing
+    system where peak gusts are still hours away):
         level 0 → 0 pts
         level 1 → 15 pts
         level 2 → 35 pts
         level 3 → 60 pts
-    The final weather score is the max of (formula result + storm boost, 100).
+    The final wind/storm score is clamped at 100.
     """
 
-    # Max temperature thresholds
-    temp_neutral_c: float = 25.0    # below this → near-zero temp stress
-    temp_alarm_c: float = 45.0      # at or above → temperature score 100
+    # Heat stress thresholds (applied to max_temp_c)
+    temp_neutral_c: float = 25.0    # at or below this → zero heat stress
+    temp_alarm_c: float = 45.0      # at or above → heat stress score 100
 
-    # Min temperature threshold (cold stress)
-    temp_cold_alarm_c: float = -15.0  # at or below → cold stress score 100
+    # Cold stress thresholds (applied to min_temp_c)
+    # Neutral at 0 °C: temperatures between 0 °C and 25 °C are stress-free.
+    # Freezing temperatures begin to cause mechanical stress to outdoor equipment.
+    temp_cold_neutral_c: float = 0.0   # at or above this → zero cold stress
+    temp_cold_alarm_c: float = -15.0   # at or below → cold stress score 100
 
     # Precipitation
     precip_alarm_mm: float = 100.0   # mm / forecast window

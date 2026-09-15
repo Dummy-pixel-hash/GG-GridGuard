@@ -74,6 +74,7 @@ class SensorContext:
     vibration_score: float
     oil_quality_score: float
     partial_discharge_score: float
+    load_score: float
     missing_sensor_ratio: float
     missing_sensor_pct: int = 0  # human-readable percentage
 
@@ -273,6 +274,7 @@ class BriefingContextBuilder:
                 vibration_score=inputs.sensors.vibration_score,
                 oil_quality_score=inputs.sensors.oil_quality_score,
                 partial_discharge_score=inputs.sensors.partial_discharge_score,
+                load_score=inputs.sensors.load_score,
                 missing_sensor_ratio=inputs.sensors.missing_sensor_ratio,
             ),
 

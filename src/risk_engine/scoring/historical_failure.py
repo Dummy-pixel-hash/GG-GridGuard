@@ -6,7 +6,7 @@ fail again soon?"
 
 Scoring formula
 ---------------
-Four sub-signals are combined:
+Five sub-signals are combined:
 
 1. Failure frequency (0–40 points)
    ──────────────────────────────
@@ -47,6 +47,17 @@ Four sub-signals are combined:
 
    If failure_count_last_5yr == 0, this contribution is 0.
 
+5. MTBF signal (0–10 points)
+   ─────────────────────────
+   mean_time_between_failures_days captures how tightly failures are
+   clustering.  A short MTBF is a strong predictor of the next failure.
+
+       MTBF ≤ 90 days  → 10 pts  (failing roughly monthly or faster)
+       MTBF ≤ 180 days → 7 pts
+       MTBF ≤ 365 days → 4 pts
+       MTBF > 365 days → 0 pts
+       None (< 2 failures, no meaningful MTBF) → 0 pts
+
 Total is capped at 100.
 """
 
@@ -79,6 +90,26 @@ def _recency_points(last_failure_days_ago: int | None) -> float:
     return 0.0
 
 
+# --- MTBF signal ----------------------------------------------------------
+def _mtbf_points(mtbf_days: float | None) -> float:
+    """
+    Return 0–10 points based on mean time between failures.
+
+    Shorter MTBF = higher score (failures clustering more tightly).
+    None is returned when there are fewer than 2 failures, which means
+    MTBF is undefined; treated as infinite (0 points).
+    """
+    if mtbf_days is None or mtbf_days <= 0:
+        return 0.0
+    if mtbf_days <= 90:
+        return 10.0
+    if mtbf_days <= 180:
+        return 7.0
+    if mtbf_days <= 365:
+        return 4.0
+    return 0.0
+
+
 def score_historical_failure(history: HistoricalFailureRecord) -> float:
     """
     Return a 0–100 historical failure risk score.
@@ -103,5 +134,7 @@ def score_historical_failure(history: HistoricalFailureRecord) -> float:
     else:
         weather_pts = 0.0
 
-    total = freq_pts + recency_pts + repeat_pts + weather_pts
+    mtbf_pts = _mtbf_points(history.mean_time_between_failures_days)
+
+    total = freq_pts + recency_pts + repeat_pts + weather_pts + mtbf_pts
     return min(100.0, total)

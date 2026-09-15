@@ -63,6 +63,7 @@ class TestSensorHealth:
             vibration_score=100.0,
             oil_quality_score=100.0,
             partial_discharge_score=100.0,
+            load_score=100.0,
             missing_sensor_ratio=0.0,
         )
         assert score_sensor_health(r) == 100.0
@@ -80,11 +81,11 @@ class TestSensorHealth:
         assert score_sensor_health(high_pd) > score_sensor_health(high_oil)
 
     def test_missing_sensor_penalty_added(self):
-        """All sensors offline should add 20 points to the base score."""
+        """All sensors offline should add 40 points to the base score."""
         r_present = SensorReadings(temperature_score=50.0, missing_sensor_ratio=0.0)
         r_missing = SensorReadings(temperature_score=50.0, missing_sensor_ratio=1.0)
         assert score_sensor_health(r_missing) == _approx(
-            score_sensor_health(r_present) + 20.0
+            score_sensor_health(r_present) + 40.0
         )
 
     def test_missing_sensor_capped_at_100(self):
@@ -107,6 +108,22 @@ class TestSensorHealth:
         )
         result = score_sensor_health(r)
         assert 0.0 <= result <= 100.0
+
+    def test_load_score_contributes_to_base(self):
+        """A fully loaded asset (load_score=100) should score higher than an unloaded one."""
+        light_load = SensorReadings(temperature_score=50.0, load_score=0.0)
+        full_load  = SensorReadings(temperature_score=50.0, load_score=100.0)
+        assert score_sensor_health(full_load) > score_sensor_health(light_load)
+
+    def test_load_score_contribution_is_5_pct(self):
+        """load_score=100 with all others zero should contribute exactly 5 pts."""
+        r = SensorReadings(load_score=100.0)
+        assert score_sensor_health(r) == _approx(5.0)
+
+    def test_fully_blind_asset_scores_40(self):
+        """All four diagnostic sensors offline → sensor health score = 40."""
+        r = SensorReadings(missing_sensor_ratio=1.0)  # load_score=0, all others 0
+        assert score_sensor_health(r) == _approx(40.0)
 
 
 # ===========================================================================
@@ -221,6 +238,54 @@ class TestHistoricalFailure:
             last_failure_days_ago=90,
         )
         assert 0.0 <= score_historical_failure(h) <= 100.0
+
+    def test_short_mtbf_adds_points(self):
+        """An asset with MTBF ≤ 90 days should score higher than one with no MTBF."""
+        no_mtbf = HistoricalFailureRecord(
+            failure_count_last_5yr=2, last_failure_days_ago=60
+        )
+        short_mtbf = HistoricalFailureRecord(
+            failure_count_last_5yr=2, last_failure_days_ago=60,
+            mean_time_between_failures_days=60.0,  # failing every 2 months
+        )
+        assert score_historical_failure(short_mtbf) > score_historical_failure(no_mtbf)
+
+    def test_short_mtbf_max_10_pts(self):
+        """MTBF ≤ 90 days should add exactly 10 pts."""
+        base = HistoricalFailureRecord(failure_count_last_5yr=1)
+        with_mtbf = HistoricalFailureRecord(
+            failure_count_last_5yr=1,
+            mean_time_between_failures_days=45.0,
+        )
+        assert score_historical_failure(with_mtbf) == _approx(
+            score_historical_failure(base) + 10.0
+        )
+
+    def test_long_mtbf_adds_zero_pts(self):
+        """MTBF > 365 days should add nothing."""
+        base = HistoricalFailureRecord(failure_count_last_5yr=2)
+        with_long_mtbf = HistoricalFailureRecord(
+            failure_count_last_5yr=2,
+            mean_time_between_failures_days=730.0,
+        )
+        assert score_historical_failure(with_long_mtbf) == score_historical_failure(base)
+
+    def test_none_mtbf_adds_zero_pts(self):
+        """None MTBF (fewer than 2 failures) should not contribute."""
+        base = HistoricalFailureRecord(failure_count_last_5yr=1)
+        with_none_mtbf = HistoricalFailureRecord(
+            failure_count_last_5yr=1,
+            mean_time_between_failures_days=None,
+        )
+        assert score_historical_failure(with_none_mtbf) == score_historical_failure(base)
+
+    def test_mtbf_180_days_adds_7_pts(self):
+        base = HistoricalFailureRecord(failure_count_last_5yr=2)
+        h = HistoricalFailureRecord(
+            failure_count_last_5yr=2,
+            mean_time_between_failures_days=150.0,
+        )
+        assert score_historical_failure(h) == _approx(score_historical_failure(base) + 7.0)
 
 
 # ===========================================================================
@@ -457,13 +522,14 @@ class TestClassificationBoundaries:
         result = score_asset(r)
         assert result.risk_level == RiskLevel.NORMAL
 
-    def test_exactly_40_is_watch(self):
+    def test_sensor_plus_weather_max_is_watch(self):
         """
-        Construct inputs where overall is exactly 40.
-        sensor_health = 100 (all sensors max, no missing) * 1.0  weight 0.30
-        weather_risk  = 100 (all weather max)              weight 0.20
-        others = 0
-        overall = 100*0.30 + 100*0.20 = 50.0 → Watch
+        Sensor health + weather max, all others zero.
+        sensor_health = T*0.35+PD*0.30+oil*0.20+vib*0.10+load*0.05
+                      = 100*0.35+100*0.30+100*0.20+100*0.10+0*0.05 = 95.0
+                        (load_score defaults to 0 when not supplied)
+        weather_risk  = 100 (all weather max, compound active)   weight 0.20
+        overall = 95*0.30 + 100*0.20 = 28.5 + 20.0 = 48.5 → Watch
         """
         inputs = RiskInputs(
             asset_id="TX-40",
@@ -472,6 +538,7 @@ class TestClassificationBoundaries:
                 vibration_score=100.0,
                 oil_quality_score=100.0,
                 partial_discharge_score=100.0,
+                # load_score deliberately omitted (defaults to 0.0)
             ),
             weather=WeatherConditions(
                 temperature_stress_score=100.0,
@@ -480,17 +547,18 @@ class TestClassificationBoundaries:
             ),
         )
         result = score_asset(inputs)
-        # 100*0.30 + 100*0.20 (with compound multiplier capped at 100) = 50
-        assert result.overall_risk == _approx(50.0)
+        # sensor=95.0 (no load), weather=100.0 (compound), others=0
+        assert result.overall_risk == _approx(48.5)
         assert result.risk_level == RiskLevel.WATCH
 
-    def test_exactly_85_is_critical(self):
+    def test_all_max_is_critical(self):
         """All five components at max → overall = 100 → Critical."""
         inputs = RiskInputs(
             asset_id="TX-85",
             sensors=SensorReadings(
                 temperature_score=100.0, partial_discharge_score=100.0,
                 oil_quality_score=100.0, vibration_score=100.0,
+                load_score=100.0,  # must be set for sensor_health to hit 100
             ),
             weather=WeatherConditions(
                 temperature_stress_score=100.0, precipitation_score=100.0,

@@ -62,9 +62,15 @@ Repair health improvement
     ``repeat_fault_active``.
 
 Maintenance overdue counter
-    ``advance_age(record, years)`` increments ``maintenance_overdue_days`` by
-    ``round(years * 365)``.  ``apply_maintenance`` and ``apply_repair`` reduce
-    it by ``event.overdue_days_resolved``, clamped to 0.
+    ``maintenance_overdue_days`` reflects how many days past the scheduled
+    maintenance date the asset currently is.  It is *not* automatically
+    incremented by ``advance_age`` — that would unconditionally mark every
+    asset as overdue the instant time advances, regardless of whether a
+    maintenance cycle has actually elapsed.  Callers that need to model
+    time-based overdue accrual should compute the days past the next
+    scheduled date and set ``maintenance_overdue_days`` explicitly before
+    calling the risk engine.  ``apply_maintenance`` and ``apply_repair``
+    reduce it by ``event.overdue_days_resolved``, clamped to 0.
 
 5-year failure window
     ``failure_count_last_5yr`` counts confirmed outage-causing failures
@@ -379,13 +385,19 @@ def advance_age(
     years: float,
 ) -> AssetLifecycleRecord:
     """
-    Advance the asset's age by ``years``, updating age-related fields.
+    Advance the asset's age by ``years``.
 
     Valid in states: ACTIVE, FAULTED.
 
     Updates:
     - age_years += years
-    - maintenance_overdue_days += round(years * 365)
+
+    Does NOT modify ``maintenance_overdue_days``.  Overdue accrual depends on
+    the asset's maintenance schedule (interval and last-maintenance date), which
+    the lifecycle engine does not track.  Callers that need to model overdue
+    accrual should compute the elapsed days past the next scheduled date and
+    update ``maintenance_overdue_days`` via ``apply_maintenance`` /
+    ``apply_repair``, or set it directly before calling the risk engine.
 
     Does not change state or modify fault/maintenance history.
 
@@ -410,5 +422,4 @@ def advance_age(
 
     r = copy.deepcopy(record)
     r.age_years += years
-    r.maintenance_overdue_days += round(years * 365)
     return r

@@ -3,11 +3,13 @@
 This package does NOT reimplement any backend logic.  It only:
 
 1. Loads the synthetic demo records from ``data.demo_assets``.
-2. Normalises them with ``normalisation.normaliser.normalise``.
-3. Scores them with ``risk_engine.calculator.score_asset``.
-4. Seeds / reads the existing SQLite storage layer (assets, topology,
+2. Optionally refreshes each asset's weather from Open-Meteo (best-effort;
+   falls back to static demo data if the network is unavailable).
+3. Normalises them with ``normalisation.normaliser.normalise``.
+4. Scores them with ``risk_engine.calculator.score_asset``.
+5. Seeds / reads the existing SQLite storage layer (assets, topology,
    lifecycle, risk snapshots).
-5. Answers operator questions through the existing
+6. Answers operator questions through the existing
    ``ai_briefing.BriefingService`` provider abstraction.
 
 All numbers served to the frontend therefore come straight from the real
@@ -16,6 +18,7 @@ risk engine — nothing is hardcoded for display purposes.
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import sqlite3
@@ -42,6 +45,7 @@ from storage.repositories.retired import RetiredAssetRepository as RetiredReposi
 from storage.repositories.risk_results import RiskResultRepository
 from storage.schema import create_all_tables
 from storage.seeder import seed_demo_assets
+from weather.open_meteo import fetch_weather_with_fallback
 
 
 # ---------------------------------------------------------------------------
@@ -141,6 +145,41 @@ _ACTION_BY_STATUS = {
 
 
 # ---------------------------------------------------------------------------
+# Live weather refresh helper
+# ---------------------------------------------------------------------------
+
+def _refresh_asset_weather(assets: list[RawAssetRecord]) -> list[RawAssetRecord]:
+    """
+    Attempt to replace each asset's static demo weather with a live Open-Meteo
+    72-hour forecast for its geographic location.
+
+    Best-effort: if the fetch fails for any individual asset (network error,
+    API timeout, parse failure), that asset keeps its existing static weather.
+    Never raises — startup must not fail due to weather unavailability.
+
+    Returns a new list of ``RawAssetRecord`` objects; originals are not mutated.
+    """
+    refreshed: list[RawAssetRecord] = []
+    for raw in assets:
+        loc = raw.metadata.location
+        obs, live = fetch_weather_with_fallback(
+            lat=loc.latitude,
+            lon=loc.longitude,
+            fallback=raw.weather,
+            forecast_hours=72,
+            timeout_s=8.0,
+        )
+        if live:
+            # Replace weather on a shallow copy of the record (other fields unchanged)
+            updated = copy.copy(raw)
+            updated.weather = obs
+            refreshed.append(updated)
+        else:
+            refreshed.append(raw)
+    return refreshed
+
+
+# ---------------------------------------------------------------------------
 # Grid state
 # ---------------------------------------------------------------------------
 
@@ -161,15 +200,24 @@ class GridState:
         self._retired_repo = RetiredRepository(self.conn)
         self._risk_repo = RiskResultRepository(self.conn)
 
+        # Attempt a live weather refresh from Open-Meteo for every asset.
+        # This replaces the static demo weather values with real forecast data.
+        # Best-effort: if the network is unavailable the static demo data is kept.
+        live_assets = _refresh_asset_weather(list(ALL_ASSETS))
+
         # Keep raw records by id for telemetry/weather detail.
         self._raw: dict[str, RawAssetRecord] = {
-            r.metadata.asset_id: r for r in ALL_ASSETS
+            r.metadata.asset_id: r for r in live_assets
         }
+        self.weather_live: dict[str, bool] = {
+            r.metadata.asset_id: False for r in ALL_ASSETS
+        }
+
         # Normalised inputs + engine results by id.
         self._inputs: dict[str, RiskInputs] = {}
         self._results: dict[str, RiskResult] = {}
 
-        for raw in ALL_ASSETS:
+        for raw in live_assets:
             inputs = normalise(raw)
             result = score_asset(inputs)
             self._inputs[raw.metadata.asset_id] = inputs
@@ -496,7 +544,13 @@ class GridState:
             )
         a = self.get_asset(asset_id)
         assert a is not None
-        ranked = sorted(a["components"].items(), key=lambda kv: kv[1], reverse=True)
+        # Rank by weighted contribution (same logic as dominant_factor) so the
+        # fallback text is consistent with the engine's dominant_factor field.
+        ranked = sorted(
+            a["components"].items(),
+            key=lambda kv: kv[1] * COMPONENT_WEIGHTS.get(kv[0], 0.0),
+            reverse=True,
+        )
         top3 = ", ".join(
             f"{COMPONENT_LABELS[k]} {v}/100" for k, v in ranked[:3]
         )
@@ -640,6 +694,7 @@ class GridState:
                 "vibration_score": inputs.sensors.vibration_score,
                 "oil_quality_score": inputs.sensors.oil_quality_score,
                 "partial_discharge_score": inputs.sensors.partial_discharge_score,
+                "load_score": inputs.sensors.load_score,
                 "missing_sensor_ratio": inputs.sensors.missing_sensor_ratio,
             },
             "weather_raw": {
