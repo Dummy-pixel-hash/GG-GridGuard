@@ -88,9 +88,8 @@ submission:
     The demo runs on 8 synthetic assets; no real utility data or customer PII is
     included. The weather × condition interaction is additive rather than
     multiplicative (a degraded asset in a storm scores the sum, not the product);
-    a cross-component multiplier is a natural next step. IBM Bob MCP tool
-    integration is planned but not yet implemented — GridGuard runs as a
-    standalone application without it.
+    a cross-component multiplier is a natural next step. GridGuard runs as a
+    standalone application.
 
 # =============================================================================
 # ARTIFACT LOCATIONS
