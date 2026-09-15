@@ -4,6 +4,7 @@ Usage:
     python3 run_ui.py            # serve on http://localhost:8000
     python3 run_ui.py 8080       # custom port
     APP_PORT=8080 python3 run_ui.py
+    PORT=10000 python3 run_ui.py # Render injects PORT; honoured first
 
 Requires only the Python standard library (no pip install needed).
 AI briefings work offline via the built-in mock provider; set LLM_BASE_URL /
@@ -20,5 +21,10 @@ from api.grid_service import default_db_path  # noqa: E402
 
 
 if __name__ == "__main__":
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else int(os.getenv("APP_PORT", "8000"))
+    # Render injects PORT; explicit argv > PORT > APP_PORT > 8000.
+    port = (
+        int(sys.argv[1])
+        if len(sys.argv) > 1
+        else int(os.getenv("PORT", "") or os.getenv("APP_PORT", "8000"))
+    )
     run(port, default_db_path())

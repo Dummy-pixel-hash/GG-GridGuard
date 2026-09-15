@@ -7,7 +7,7 @@ name = "gridguard"
 version = "0.1.0"
 description = "GridGuard risk engine — deterministic 0-100 composite risk scoring per grid asset"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = ["openai>=1.0"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
