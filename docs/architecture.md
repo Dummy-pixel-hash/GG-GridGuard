@@ -48,23 +48,26 @@ graph TD
 
 | Component | Technology | Responsibility |
 |---|---|---|
-| Ingestion & normalization | **Python — `src/normalisation/`** | Converts raw physical-unit measurements (°C, pC, kV, mm/h, km/h) into 0–100 normalised scores using IEC-standard alarm thresholds. `normalise(RawAssetRecord) → RiskInputs`. Input validation via `NormalisationError`. Thresholds configurable per asset class in `src/normalisation/thresholds.py`. Demo data in `src/data/`. |
-| Degradation & lifecycle engine | **Python — `src/lifecycle/`** | Pure-function state machine: `apply_fault`, `apply_maintenance`, `apply_repair`, `apply_replacement`, `advance_age`. Three states: ACTIVE / FAULTED / RETIRED. Fault stress degrades `insulation_health_pct`; repair improves it. `apply_replacement` retires the physical unit (full history preserved in `RetiredAssetRecord`) and creates a clean-state successor with `predecessor_asset_id` lineage link. Outputs `to_raw_degradation()` / `to_raw_incidents()` for the normaliser. |
-| Risk engine | **Python — `src/risk_engine/`** | Composite 0–100 score per asset from five factor groups: sensor health (30%), weather (20%), historical failure (15%), asset degradation (15%), grid impact (20%). Bands: Normal/Watch/High/Critical. Fully implemented and tested. |
-| Grid impact model | **Python — `src/risk_engine/scoring/grid_impact.py`** | Consequence-of-failure score from customers served, critical facilities, peak load, downstream cascade, and N-1 redundancy. Implemented. |
-| Prioritization & planning | TBD | Combine risk + grid impact into a ranked maintenance plan; crew pre-positioning for weather-exposed, high-impact assets. |
+| Ingestion & normalization | **Python — `src/normalisation/`** | Converts raw physical-unit measurements (°C, pC, kV, mm/h, km/h) into 0–100 normalised scores using IEC-standard alarm thresholds. `normalise(RawAssetRecord) → RiskInputs`. Includes `load_score` from current load factor. Cold-stress neutral corrected to 0 °C. Input validation via `NormalisationError`. Thresholds in `src/normalisation/thresholds.py`. Demo data in `src/data/`. |
+| Degradation & lifecycle engine | **Python — `src/lifecycle/`** | Pure-function state machine: `apply_fault`, `apply_maintenance`, `apply_repair`, `apply_replacement`, `advance_age`. Three states: ACTIVE / FAULTED / RETIRED. Fault stress degrades `insulation_health_pct`; repair improves it. `apply_replacement` retires the physical unit (full history preserved in `RetiredAssetRecord`) and creates a clean-state successor with `predecessor_asset_id` lineage link. `advance_age` only increments age — `maintenance_overdue_days` is managed by maintenance/repair events, not age ticks. |
+| Risk engine | **Python — `src/risk_engine/`** | Composite 0–100 score per asset from five factor groups: sensor health (30%), weather (20%), historical failure (15%), asset degradation (15%), grid impact (20%). Bands: Normal/Watch/High/Critical. Sensor health includes current load (5%) and a 40-pt missing-sensor floor. Historical failure includes MTBF sub-signal (0–10 pts). |
+| Grid impact model | **Python — `src/risk_engine/scoring/grid_impact.py`** | Consequence-of-failure score from customers served, critical facilities, peak load, downstream cascade, and N-1 redundancy. Non-critical sub-scores discounted 40% when N-1 path exists; critical-facility points are never discounted. |
+| Prioritization & planning | **Python — `src/api/grid_service.py`** | Assets ranked by overall risk then grid impact into a prioritized day's work order list. Crew pre-positioning identifies weather-exposed (weather risk ≥60 or storm level ≥2) high-consequence (risk ≥70 or critical facilities > 0) assets and groups them by region for pre-storm staging. |
 | AI briefing layer | **Python — `src/ai_briefing/`** | LLM-generated explanations of risk factors and recommended actions, grounded in engine-computed scores. Provider-agnostic: any OpenAI-compatible endpoint works. Configurable via `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`. Falls back to deterministic `MockProvider` when no credentials are set (safe for CI/offline). IBM watsonx.ai is supported as an optional provider. |
 | Operator interface | IBM Bob (MCP tool integration — planned) | Natural-language queries over risk, rankings, plans, and briefings. Bob is part of the hackathon development workflow; GridGuard runs independently without it. |
-| Weather source | Open-Meteo API | Forecast per asset location: temperature, rainfall, wind/storm severity (no API key required) |
+| Weather source | Open-Meteo API — `src/weather/` | 72-hour forecast per asset location: temperature, rainfall, wind gust speed, storm severity (no API key required). Refreshed live at `GridState` startup via `fetch_weather_with_fallback`; static demo data kept on network failure. |
 | Storage | SQLite — `src/storage/` | Asset registry, lifecycle records, risk results. Schema in `src/storage/schema.py`. |
 
 ## Data Flow
 
 1. Asset registry, sensor telemetry, and incident records are loaded for a
    representative distribution network (8-asset synthetic demo dataset in
-   `src/data/`; production data ingestion path TBD).
-2. Open-Meteo forecasts are fetched per asset location (temperature,
-   rainfall, wind/storm severity).
+   `src/data/`).
+2. Open-Meteo 72-hour forecasts are fetched per asset location at startup
+   (temperature, rainfall, wind gust speed, storm severity). This is
+   best-effort: if the fetch fails for an individual asset its static demo
+   weather is kept. `storm_warning_level` is derived from actual forecast
+   values via `classify_storm_level`.
 3. The degradation & lifecycle engine maintains per-asset degradation state;
    a replacement spawns a clean-state successor while the predecessor's
    history is preserved.

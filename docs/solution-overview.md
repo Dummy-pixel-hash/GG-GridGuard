@@ -124,30 +124,28 @@ LLM_MODEL=ibm/granite-3-8b-instruct
 
 ## Status
 
-491 tests passing, 0 network calls in test suite.
+566 tests passing, 0 network calls in test suite.
 
 Implemented:
-- Risk engine (`src/risk_engine/`) — 61 tests
-- Normalisation layer (`src/normalisation/`) + IEC-based thresholds — 110 tests
+- Risk engine (`src/risk_engine/`) — hardened; sensor health includes current load (5% weight) and
+  a 40-pt missing-sensor floor; historical failure includes MTBF sub-signal (0–10 pts); cold-stress
+  threshold corrected to 0 °C neutral
+- Normalisation layer (`src/normalisation/`) + IEC-based thresholds
 - Synthetic demo dataset: 8 assets across all four risk bands (`src/data/`)
-- Open-Meteo weather integration (`src/weather/`) — 61 tests
-  - `fetch_weather(lat, lon) → RawWeatherObservation`; `fetch_weather_with_fallback` for graceful degradation
-  - Injectable `HttpClient` — no network calls in tests
-- Lifecycle engine (`src/lifecycle/`) — 94 tests
-  - State machine: ACTIVE / FAULTED / RETIRED
-  - `apply_fault`, `apply_maintenance`, `apply_repair`, `apply_replacement`, `advance_age`
-  - All functions pure / immutable
-- Storage layer (`src/storage/`) — SQLite, 67 tests
-  - Asset registry, lifecycle records, risk results, retired assets
-  - Seeder for 8-asset demo dataset
-- AI briefing layer (`src/ai_briefing/`) — 98 tests
-  - `BriefingContextBuilder` — grounded context from risk engine outputs
-  - `OpenAIProvider` — primary runtime provider (OpenAI-compatible endpoints)
-  - `WatsonxProvider` — optional IBM watsonx.ai path
-  - `MockProvider` — deterministic, no network, used in CI
-  - `BriefingService` — four briefing types: concise, why-critical, factors, inspection
+- Open-Meteo weather integration (`src/weather/`) — live refresh at startup via
+  `fetch_weather_with_fallback`; injectable `HttpClient` for offline tests; `classify_storm_level`
+  derives warning level from actual forecast values
+- Lifecycle engine (`src/lifecycle/`) — pure/immutable state machine: ACTIVE / FAULTED / RETIRED;
+  `advance_age` no longer accrues overdue days (managed by maintenance/repair events only)
+- Storage layer (`src/storage/`) — SQLite; asset registry, lifecycle records, risk results, retired assets
+- Prioritization & planning (`src/api/grid_service.py`) — assets ranked by risk then grid impact into
+  a work order list; crew pre-positioning by region for storm-exposed, high-consequence assets
+- AI briefing layer (`src/ai_briefing/`) — `BriefingContextBuilder` (grounded context); `OpenAIProvider`
+  (any OpenAI-compatible endpoint); `WatsonxProvider` (optional IBM watsonx.ai); `MockProvider`
+  (deterministic, no network); `BriefingService` with conversational history support; `load_score`
+  surfaced in `SensorContext` for the AI briefing
+- Operator dashboard — served via `run_ui.py`
 
 Remaining TBD:
-- Prioritization ranking API (combining risk + grid impact into ordered list)
 - IBM Bob MCP tool surface (tool definitions, parameter schemas)
-- Dashboard / operator UI
+- Weather × condition cross-component interaction (currently additive)

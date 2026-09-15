@@ -81,10 +81,11 @@ What startup does:
 
 1. Loads `.env` files (prints which files were found)
 2. Seeds the 8 synthetic demo assets into SQLite (`gridguard.db`, or `GRIDGUARD_DB` if set)
-3. Normalises and scores every asset with the live risk engine
-4. Persists a risk snapshot per asset in the storage layer
-5. Prints the active LLM provider and model (or warns and falls back to mock)
-6. Serves the operator dashboard at `http://localhost:8000`
+3. Attempts a live Open-Meteo 72-hour weather refresh for every asset location (best-effort — static demo data kept per asset on network failure)
+4. Normalises and scores every asset with the live risk engine
+5. Persists a risk snapshot per asset in the storage layer
+6. Prints the active LLM provider and model (or warns and falls back to mock)
+7. Serves the operator dashboard at `http://localhost:8000`
 
 Expected startup output:
 
@@ -129,7 +130,7 @@ GridGuard UI: serving on http://localhost:8000
 python3 -m pytest -q
 ```
 
-546 tests · 0 network calls · no credentials required. All tests pass with the offline mock provider by default.
+566 tests · 0 network calls · no credentials required. All tests pass with the offline mock provider by default.
 
 ```bash
 # Verbose output with test names

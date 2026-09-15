@@ -46,11 +46,11 @@ submission:
     computed scores, never invented by the LLM.
 
   key_features:                        # REQUIRED — List 3 to 5 specific features you implemented
-    - "Deterministic risk engine: per-asset 0–100 composite score from five independently auditable components — sensor health (30%), weather risk (20%), historical failure (15%), asset degradation (15%), grid impact (20%) — with Normal/Watch/High/Critical bands"
-    - "Grid-impact-aware maintenance prioritization: assets ranked by risk and grid impact (customers, critical facilities, peak load, downstream cascade, N-1 redundancy) into a maintenance plan with crew pre-positioning recommendations for storm-exposed, high-consequence assets"
-    - "Asset lifecycle management with preserved lineage: replacement retires the old asset with its full fault and maintenance history intact, spawns a clean-state successor linked by predecessor_asset_id"
-    - "Conversational AI operator assistant: grounded in engine outputs, maintains conversation history across turns, adapts response length and tone (follow-ups get follow-up answers; casual reactions get natural replies), works offline via mock provider, configurable to any OpenAI-compatible endpoint"
-    - "Provider-agnostic LLM layer: three environment variables (LLM_BASE_URL, LLM_API_KEY, LLM_MODEL) point GridGuard at any OpenAI-compatible endpoint — Ollama, llama.cpp, OpenAI, Groq, Together AI, or IBM watsonx.ai (optional)"
+    - "Hardened deterministic risk engine: per-asset 0–100 composite score from five auditable components — sensor health (30%), weather risk (20%), historical failure (15%), asset degradation (15%), grid impact (20%) — with Normal/Watch/High/Critical bands; includes MTBF sub-signal, current load scoring, corrected cold-stress threshold, and a raised missing-sensor safety floor (all-blind asset scores ≥40 on sensor component)"
+    - "Live weather integration: GridState refreshes each asset's Open-Meteo 72-hour forecast at startup (best-effort; static demo data kept on network failure); storm_warning_level derived from actual wind/precipitation via classify_storm_level"
+    - "Grid-impact-aware maintenance prioritization and crew pre-positioning: assets ranked by risk × grid impact (customers, critical facilities, peak load, downstream cascade, N-1 redundancy) into a day's work order list with region-level crew staging recommendations for storm-exposed, high-consequence assets"
+    - "Asset lifecycle management with preserved lineage: replacement retires the old asset with full fault/maintenance history intact, spawns a clean-state successor linked by predecessor_asset_id; advance_age is stateless (overdue managed by maintenance events, not age ticks)"
+    - "Conversational AI operator assistant: grounded in engine outputs, conversation history across turns, tone-adaptive responses, offline mock fallback, configurable to any OpenAI-compatible endpoint or IBM watsonx.ai"
 
   tech_stack:
     languages:
@@ -68,24 +68,29 @@ submission:
 
   what_we_are_most_proud_of: >         # Optional but recommended — guides judges to your best work
     GridGuard does not treat failure prediction as a black box. Four data silos
-    utilities already own — sensor telemetry, weather forecasts, incident history,
-    and asset lifecycle state — are fused into one explainable ranking that tells
-    an operator not just which asset is most likely to fail, but which failure would
-    hurt the grid most, why, and what to do about it this week. The AI assistant
-    explains the deterministic engine's output in plain language and maintains
-    conversational context across follow-up questions — grounded in the computed
-    scores, not free-form generation. The entire system runs on the Python standard
-    library with no pip install, making it immediately reproducible by any evaluator.
+    utilities already own — sensor telemetry, live weather forecasts, incident
+    history, and asset lifecycle state — are fused into one explainable ranking
+    that tells an operator not just which asset is most likely to fail, but
+    which failure would hurt the grid most, why, and what to do about it today.
+    Every scoring formula is independently auditable: cold-stress uses a
+    physically correct 0 °C neutral, MTBF drives the historical-failure score,
+    missing sensors raise risk rather than hiding it, and current load is
+    reflected in the sensor component. Weather scores update from real Open-Meteo
+    forecasts at startup. The AI assistant explains the engine's output in plain
+    language, maintains context across follow-ups, and falls back to a
+    deterministic grounded response if the LLM is unavailable. The whole system
+    runs on the Python standard library — no pip install, immediately reproducible.
 
   known_limitations: >                 # Optional but recommended — be honest about gaps
     Risk weights (sensor 30%, weather 20%, historical failure 15%, degradation 15%,
-    grid impact 20%) are tunable design parameters, not validated against real
-    utility failure data — no labeled failure corpus was available. The demo runs on
-    8 synthetic assets; no real utility asset data or customer PII is included.
-    The prioritization ranking combines risk and grid impact by sort order; a more
-    sophisticated joint-scoring formula is a natural next step. IBM Bob MCP tool
-    integration is planned but not yet implemented — GridGuard runs as a standalone
-    application without it. Dashboard UI is functional but not production-polished.
+    grid impact 20%) are tunable design parameters, not validated against a real
+    utility failure corpus — no labeled dataset was available at hackathon scale.
+    The demo runs on 8 synthetic assets; no real utility data or customer PII is
+    included. The weather × condition interaction is additive rather than
+    multiplicative (a degraded asset in a storm scores the sum, not the product);
+    a cross-component multiplier is a natural next step. IBM Bob MCP tool
+    integration is planned but not yet implemented — GridGuard runs as a
+    standalone application without it.
 
 # =============================================================================
 # ARTIFACT LOCATIONS
