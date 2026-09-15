@@ -5,7 +5,8 @@
 
 const S = {
   assets: [], summary: null, priorities: null, briefing: null,
-  selected: null, sideTab: "overview",
+  selected: null, sideTab: "overview", currentView: "overview",
+  mapZoom: 1,
   filters: { q: "", status: "", region: "", type: "" },
   chatBooted: false, asking: false,
 };
@@ -24,6 +25,127 @@ const esc = (v) => String(v == null ? "—" : v).replace(/[&<>"]/g, (c) => ({"&"
 const fmtInt = (n) => n == null ? "—" : Number(n).toLocaleString("en-US");
 const riskClass = (v) => v >= 85 ? "bad" : v >= 70 ? "bad" : v >= 40 ? "warn" : "ok";
 const barColor = (v) => v >= 85 ? COLORS.Critical : v >= 70 ? COLORS.High : v >= 40 ? COLORS.Monitoring : COLORS.Healthy;
+
+function buildMockData() {
+  const raw = [
+    {
+      id: "TX-001", status: "Healthy", asset_type: "transformer", substation: "North Hub", region: "North",
+      overall_risk: 24, dominant_factor: "thermal_risk", recommended_action: "Routine inspection", action_detail: "Load profile remains stable and no thermal drift is present.",
+      sensors_raw: { top_oil_temp_c: 58, winding_hot_spot_c: 72, vibration_mm_s: 1.4, oil_dielectric_kv: 68, partial_discharge_pc: 190, load_factor_current: 0.62 },
+      sensors_norm: { temperature_score: 22, vibration_score: 30, oil_quality_score: 16, partial_discharge_score: 24 },
+      weather_raw: { max_temp_c: 31, min_temp_c: 18, precipitation_mm: 12, wind_speed_max_kmh: 28, storm_warning_level: 1, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 18, precipitation_score: 12, wind_storm_score: 16 },
+      grid_impact: { customers_served: 42000, critical_facility_count: 1, critical_facility_names: ["North Medical Campus"], peak_load_mw: 118, downstream_asset_count: 7, has_redundant_path: true },
+      lifecycle: { rated_lifespan_years: 28, remaining_life_years: 18, state: "Stable", maintenance_history: [{ days_ago: 120, notes: "oil sample" }], fault_history: [] },
+      degradation: { age_years: 10, maintenance_overdue_days: 0, insulation_health_pct: 93, cumulative_fault_events: 0 },
+      history: { failure_count_last_5yr: 0, failures_caused_by_weather: 0, last_failure_days_ago: null, repeat_mode_flag: false, mean_time_between_failures_days: null },
+      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2014, rated_kva: 320000, rated_voltage_kv: 220,
+    },
+    {
+      id: "TX-003", status: "High", asset_type: "transformer", substation: "Central West", region: "Central",
+      overall_risk: 71, dominant_factor: "oil_risk", recommended_action: "Replace oil + filter", action_detail: "Oil dielectric is trending down and contaminant load is increasing.",
+      sensors_raw: { top_oil_temp_c: 74, winding_hot_spot_c: 95, vibration_mm_s: 2.9, oil_dielectric_kv: 34, partial_discharge_pc: 620, load_factor_current: 0.82 },
+      sensors_norm: { temperature_score: 58, vibration_score: 61, oil_quality_score: 78, partial_discharge_score: 62 },
+      weather_raw: { max_temp_c: 33, min_temp_c: 20, precipitation_mm: 26, wind_speed_max_kmh: 36, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 41, precipitation_score: 36, wind_storm_score: 27 },
+      grid_impact: { customers_served: 93000, critical_facility_count: 2, critical_facility_names: ["Central Data Center", "Emergency Services Hub"], peak_load_mw: 190, downstream_asset_count: 10, has_redundant_path: false },
+      lifecycle: { rated_lifespan_years: 30, remaining_life_years: 9, state: "Aging", maintenance_history: [{ days_ago: 80, notes: "oil reclaim" }], fault_history: [{ severity: "minor", days_ago: 145 }] },
+      degradation: { age_years: 21, maintenance_overdue_days: 42, insulation_health_pct: 78, cumulative_fault_events: 3 },
+      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 1, last_failure_days_ago: 180, repeat_mode_flag: true, mean_time_between_failures_days: 986 },
+      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2005, rated_kva: 400000, rated_voltage_kv: 230,
+    },
+    {
+      id: "TX-004", status: "Critical", asset_type: "substation", substation: "Central East", region: "Central",
+      overall_risk: 92, dominant_factor: "thermal_risk", recommended_action: "Emergency load shed and service", action_detail: "Critical hotspot is approaching protective limits with elevated downstream consequence.",
+      sensors_raw: { top_oil_temp_c: 88, winding_hot_spot_c: 116, vibration_mm_s: 3.8, oil_dielectric_kv: 29, partial_discharge_pc: 970, load_factor_current: 0.91 },
+      sensors_norm: { temperature_score: 88, vibration_score: 76, oil_quality_score: 84, partial_discharge_score: 89 },
+      weather_raw: { max_temp_c: 35, min_temp_c: 21, precipitation_mm: 39, wind_speed_max_kmh: 42, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 52, precipitation_score: 47, wind_storm_score: 39 },
+      grid_impact: { customers_served: 148000, critical_facility_count: 3, critical_facility_names: ["Metro Hospital", "Water Plant", "Airport Fuel Loop"], peak_load_mw: 270, downstream_asset_count: 14, has_redundant_path: false },
+      lifecycle: { rated_lifespan_years: 27, remaining_life_years: 6, state: "Critical", maintenance_history: [{ days_ago: 62, notes: "cooling check" }], fault_history: [{ severity: "major", days_ago: 57 }] },
+      degradation: { age_years: 24, maintenance_overdue_days: 67, insulation_health_pct: 70, cumulative_fault_events: 5 },
+      history: { failure_count_last_5yr: 3, failures_caused_by_weather: 1, last_failure_days_ago: 57, repeat_mode_flag: true, mean_time_between_failures_days: 610 },
+      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 1999, rated_kva: 500000, rated_voltage_kv: 275,
+    },
+    {
+      id: "TX-007", status: "High", asset_type: "substation", substation: "East Bay", region: "East",
+      overall_risk: 76, dominant_factor: "weather_risk", recommended_action: "Pre-stage response crew", action_detail: "Operational risk is driven by concurrent storm exposure and limited redundancy.",
+      sensors_raw: { top_oil_temp_c: 78, winding_hot_spot_c: 101, vibration_mm_s: 3.1, oil_dielectric_kv: 40, partial_discharge_pc: 710, load_factor_current: 0.86 },
+      sensors_norm: { temperature_score: 66, vibration_score: 68, oil_quality_score: 72, partial_discharge_score: 71 },
+      weather_raw: { max_temp_c: 34, min_temp_c: 21, precipitation_mm: 65, wind_speed_max_kmh: 60, storm_warning_level: 3, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 46, precipitation_score: 69, wind_storm_score: 64 },
+      grid_impact: { customers_served: 121000, critical_facility_count: 2, critical_facility_names: ["East Port", "Coastal Hospital"], peak_load_mw: 238, downstream_asset_count: 13, has_redundant_path: false },
+      lifecycle: { rated_lifespan_years: 29, remaining_life_years: 8, state: "Stress", maintenance_history: [{ days_ago: 74, notes: "roofing seal" }], fault_history: [{ severity: "minor", days_ago: 210 }] },
+      degradation: { age_years: 20, maintenance_overdue_days: 54, insulation_health_pct: 77, cumulative_fault_events: 4 },
+      history: { failure_count_last_5yr: 2, failures_caused_by_weather: 2, last_failure_days_ago: 210, repeat_mode_flag: true, mean_time_between_failures_days: 840 },
+      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2006, rated_kva: 470000, rated_voltage_kv: 275,
+    },
+    {
+      id: "TX-008", status: "Monitoring", asset_type: "transformer", substation: "Coastal North", region: "East",
+      overall_risk: 41, dominant_factor: "insulation_risk", recommended_action: "Insulation audit", action_detail: "Insulation health is stable but trending down under marine moisture exposure.",
+      sensors_raw: { top_oil_temp_c: 67, winding_hot_spot_c: 86, vibration_mm_s: 2.7, oil_dielectric_kv: 52, partial_discharge_pc: 430, load_factor_current: 0.75 },
+      sensors_norm: { temperature_score: 42, vibration_score: 56, oil_quality_score: 51, partial_discharge_score: 36 },
+      weather_raw: { max_temp_c: 33, min_temp_c: 22, precipitation_mm: 58, wind_speed_max_kmh: 55, storm_warning_level: 2, forecast_hours: 72 },
+      weather_norm: { temperature_stress_score: 44, precipitation_score: 66, wind_storm_score: 58 },
+      grid_impact: { customers_served: 81000, critical_facility_count: 1, critical_facility_names: ["Harbor Pump Station"], peak_load_mw: 174, downstream_asset_count: 11, has_redundant_path: true },
+      lifecycle: { rated_lifespan_years: 30, remaining_life_years: 14, state: "Watch", maintenance_history: [{ days_ago: 103, notes: "moisture check" }], fault_history: [] },
+      degradation: { age_years: 17, maintenance_overdue_days: 15, insulation_health_pct: 82, cumulative_fault_events: 1 },
+      history: { failure_count_last_5yr: 1, failures_caused_by_weather: 1, last_failure_days_ago: 420, repeat_mode_flag: false, mean_time_between_failures_days: 1825 },
+      lineage: { predecessor: null, successor_of_retired: null }, commissioned_year: 2008, rated_kva: 430000, rated_voltage_kv: 230,
+    },
+  ];
+
+  const component_labels = { thermal_risk: "Thermal", vibration_risk: "Vibration", oil_risk: "Oil Quality", weather_risk: "Weather", load_risk: "Load", insulation_risk: "Insulation" };
+  const component_weights = { thermal_risk: 0.21, vibration_risk: 0.18, oil_risk: 0.2, weather_risk: 0.17, load_risk: 0.12, insulation_risk: 0.12 };
+  const assets = raw.map((d) => ({
+    ...d,
+    component_labels,
+    component_weights,
+    components: {
+      thermal_risk: d.overall_risk > 70 ? 88 : d.overall_risk > 40 ? 58 : 34,
+      vibration_risk: d.sensors_norm.vibration_score,
+      oil_risk: d.sensors_norm.oil_quality_score,
+      weather_risk: d.weather_norm.precipitation_score + d.weather_norm.wind_storm_score > 100 ? 96 : d.weather_norm.precipitation_score + d.weather_norm.wind_storm_score,
+      load_risk: Math.max(18, Math.round(d.sensors_raw.load_factor_current * 100)),
+      insulation_risk: d.degradation.insulation_health_pct,
+    },
+    dominant_factor_label: component_labels[d.dominant_factor] || "Asset health",
+  }));
+
+  const counts = { Healthy: 0, Monitoring: 0, High: 0, Critical: 0 };
+  assets.forEach((a) => { counts[a.status] += 1; });
+
+  const summary = { total: assets.length, counts };
+  const priorities = {
+    generated_at: new Date().toISOString(),
+    maintenance_plan: assets
+      .map((a) => ({
+        asset_id: a.id, rank: 0, substation: a.substation, status: a.status,
+        overall_risk: a.overall_risk, customers_served: a.grid_impact.customers_served,
+        has_redundant_path: a.grid_impact.has_redundant_path, recommended_action: a.recommended_action,
+        action_detail: a.action_detail,
+      }))
+      .sort((x, y) => y.overall_risk - x.overall_risk)
+      .map((item, index) => ({ ...item, rank: index + 1 })),
+    crew_prepositioning: [
+      { region: "Central", reason: "High-risk asset cluster near critical hospital load", assets: ["TX-004", "TX-003"] },
+      { region: "East", reason: "Storm exposure and coastal weather load", assets: ["TX-007", "TX-008"] },
+    ],
+  };
+
+  return {
+    assets,
+    summary,
+    priorities,
+    briefing: {
+      provider: "local preview",
+      model: "demo-thermal",
+      offline: true,
+      warning: "Preview mode active. Backend is not running.",
+      env_files: [],
+    },
+  };
+}
 
 function toast(msg) {
   const t = document.createElement("div");
@@ -46,10 +168,8 @@ async function init() {
     ]);
     S.assets = d1.assets; S.summary = d2; S.priorities = d3; S.briefing = d4;
   } catch (e) {
-    document.body.innerHTML = `<div style="padding:60px;text-align:center">
-      <h2>⚠ Could not reach the GridGuard backend</h2>
-      <p style="color:#8ea0bd">Start it with <code>python3 run_ui.py</code>, then reload.</p></div>`;
-    return;
+    const mock = buildMockData();
+    S.assets = mock.assets; S.summary = mock.summary; S.priorities = mock.priorities; S.briefing = mock.briefing;
   }
   const worst = [...S.assets].sort((a, b) => b.overall_risk - a.overall_risk)[0];
   S.selected = worst ? worst.id : null;
@@ -119,6 +239,12 @@ function renderMap() {
     return `<line x1="${pts[a][0]}" y1="${pts[a][1]}" x2="${pts[b][0]}" y2="${pts[b][1]}"
       stroke="${col}" stroke-opacity="0.28" stroke-width="0.35" vector-effect="non-scaling-stroke"/>`;
   }).join("");
+}
+
+function setMapZoom(next) {
+  S.mapZoom = Math.min(1.6, Math.max(0.8, next));
+  $("map-canvas").style.transform = `scale(${S.mapZoom})`;
+  $("map-zoom-level").textContent = `${Math.round(S.mapZoom * 100)}%`;
 }
 
 /* ---------------- side panel ---------------- */
@@ -350,6 +476,48 @@ function openModal(id) {
 }
 function closeModal() { $("modal-backdrop").classList.add("hidden"); }
 
+function openHelp(kind) {
+  const guides = {
+    overview: {
+      eyebrow: "GRID STATUS",
+      title: "Read the network at a glance",
+      lead: "Use this view to spot risk, inspect an asset, and understand where operational attention is needed.",
+      steps: [["Filter the fleet", "Search by asset ID, status, region, or asset type. The map and attention queue update together."], ["Read the health scale", "Green means healthy, yellow means monitoring, orange means high risk, and red means critical."], ["Inspect a node", "Select a transformer or substation for live details. Double-click it for the full asset record."], ["Navigate the map", "Use +, minus, Reset, or your mouse wheel to zoom into the network."], ["Move to action", "Use the Maintenance view when an asset needs a ranked response plan."]]
+    },
+    assets: {
+      eyebrow: "ASSET REGISTER",
+      title: "Inspect the asset register",
+      lead: "Use Assets when you need a precise, sortable view of every transformer and substation in the fleet.",
+      steps: [["Scan the table", "Compare status, risk score, dominant factor, customer impact, and recommended action in one row."], ["Open details", "Select any row or choose Details to view sensors, weather, history, lifecycle, and grid impact."], ["Follow the risk", "The bar and score show relative exposure; the status color shows the operational urgency."], ["Return to context", "Use the asset record actions to jump into Guard AI or schedule a maintenance response."]]
+    },
+    maintenance: {
+      eyebrow: "MAINTENANCE CONTROL",
+      title: "Turn risk into a response plan",
+      lead: "Use Maintenance to prioritize work by risk and grid consequence, then prepare crews for exposed regions.",
+      steps: [["Start at rank one", "The plan is ordered by risk multiplied by grid impact, so the highest-consequence work appears first."], ["Read the action", "The bold recommendation is the proposed intervention; the supporting line explains the operational reason."], ["Check redundancy", "N-1 indicates a redundant path. None means an outage carries higher consequence."], ["Open asset details", "Choose Details for the full evidence record behind a recommendation."], ["Review crews", "Crew Pre-positioning highlights weather-exposed, high-consequence assets by region."]]
+    },
+    ai: {
+      eyebrow: "GUARD AI",
+      title: "Ask grounded operational questions",
+      lead: "Guard AI explains the scores already shown in GridGuard so you can investigate without losing the source context.",
+      steps: [["Choose context", "Select an asset or leave the selector on Fleet-wide for a broader answer."], ["Use a suggestion", "Start with a suggested question, or ask why an asset is high risk and what to inspect."], ["Check the evidence", "Answers include the asset IDs and scores used to ground the response."], ["Act on the result", "Use the answer alongside the Maintenance plan and asset detail record before assigning work."]]
+    }
+  };
+  const guide = guides[S.currentView] || guides.overview;
+  const content = kind === "contact" ? `
+    <div class="help-eyebrow">GRIDGUARD SUPPORT</div>
+    <h2 id="help-title">Contact the control room</h2>
+    <p class="help-lead">For access, data, or operational questions, contact your GridGuard administrator or the platform support desk.</p>
+    <div class="help-contact"><b>Platform support</b><span>support@gridguard.local</span><small>Include the asset ID and time of the issue when reporting a problem.</small></div>` : `
+    <div class="help-eyebrow">${guide.eyebrow}</div>
+    <h2 id="help-title">${guide.title}</h2>
+    <p class="help-lead">${guide.lead}</p>
+    <ol class="help-steps">${guide.steps.map(([title, text]) => `<li><b>${title}</b><span>${text}</span></li>`).join("")}</ol>`;
+  $("help-body").innerHTML = content;
+  $("help-backdrop").classList.remove("hidden");
+}
+function closeHelp() { $("help-backdrop").classList.add("hidden"); }
+
 /* ---------------- AI ---------------- */
 const SUGGESTIONS = [
   "Which assets should we inspect today?",
@@ -373,7 +541,7 @@ function bootChat() {
   S.chatBooted = true;
   $("suggestions").innerHTML = SUGGESTIONS.map((s) => `<button class="sug" type="button">${esc(s)}</button>`).join("");
   document.querySelectorAll(".sug").forEach((b) => b.onclick = () => ask(b.textContent, $("ai-asset").value || null));
-  aiSay("Control-room assistant online. I explain live risk-engine results — pick an asset context or ask fleet-wide. Try a suggestion below.", [], {});
+  aiSay("Guard AI is online. I explain live risk-engine results — pick an asset context or ask fleet-wide. Try a suggestion below.", [], {});
 }
 function aiSay(text, assetIds, risks) {
   const chips = (assetIds || []).map((id) =>
@@ -420,6 +588,7 @@ function gotoAI(prefill, assetId) {
 
 /* ---------------- chrome ---------------- */
 function switchView(name) {
+  S.currentView = name;
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.view === name));
   document.querySelectorAll(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + name));
   if (name === "ai") { bootChat(); renderAIContext(); }
@@ -445,6 +614,13 @@ function renderAll() {
   $("f-status").onchange = (e) => { S.filters.status = e.target.value; renderMap(); };
   $("f-region").onchange = (e) => { S.filters.region = e.target.value; renderMap(); };
   $("f-type").onchange = (e) => { S.filters.type = e.target.value; renderMap(); };
+  $("map-zoom-in").onclick = () => setMapZoom(S.mapZoom + 0.1);
+  $("map-zoom-out").onclick = () => setMapZoom(S.mapZoom - 0.1);
+  $("map-zoom-reset").onclick = () => setMapZoom(1);
+  $("netmap").onwheel = (e) => {
+    e.preventDefault();
+    setMapZoom(S.mapZoom + (e.deltaY < 0 ? 0.1 : -0.1));
+  };
   $("qa-plan").onclick = () => switchView("maintenance");
   $("qa-crew").onclick = async () => {
     switchView("maintenance");
@@ -462,7 +638,22 @@ function renderAll() {
   };
   $("modal-close").onclick = closeModal;
   $("modal-backdrop").onclick = (e) => { if (e.target.id === "modal-backdrop") closeModal(); };
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+  $("help-trigger").onclick = () => {
+    const menu = $("help-dropdown");
+    menu.hidden = !menu.hidden;
+    $("help-trigger").setAttribute("aria-expanded", String(!menu.hidden));
+  };
+  document.querySelectorAll("[data-help]").forEach((b) => b.onclick = () => {
+    $("help-dropdown").hidden = true;
+    $("help-trigger").setAttribute("aria-expanded", "false");
+    openHelp(b.dataset.help);
+  });
+  $("help-close").onclick = closeHelp;
+  $("help-backdrop").onclick = (e) => { if (e.target.id === "help-backdrop") closeHelp(); };
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".help-menu")) { $("help-dropdown").hidden = true; $("help-trigger").setAttribute("aria-expanded", "false"); }
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeModal(); closeHelp(); } });
 }
 
 document.addEventListener("DOMContentLoaded", init);
